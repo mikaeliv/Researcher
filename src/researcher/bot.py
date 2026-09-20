@@ -54,9 +54,11 @@ async def toggle(message: Message) -> None:
 async def run(message: Message) -> None:
     if not owner(message.from_user.id if message.from_user else None):
         return
-    task = (collect_all if message.text.startswith("/collect") else
-            publish_pending if message.text.startswith("/publish") else weekly_digest)
-    task.delay()
+    if message.text.startswith("/digest"):
+        weekly_digest.delay(message.chat.id)
+    else:
+        task = collect_all if message.text.startswith("/collect") else publish_pending
+        task.delay()
     await message.answer("Задача поставлена в очередь")
 
 
@@ -91,4 +93,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

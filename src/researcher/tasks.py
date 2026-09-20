@@ -113,9 +113,10 @@ def publish_pending() -> None:
 
 
 @celery_app.task
-def weekly_digest() -> None:
+def weekly_digest(chat_id: int | str | None = None) -> None:
     # A digest is generated from published clusters; all links remain in their original posts.
-    if not settings.telegram_bot_token or not settings.telegram_channel_id:
+    target_chat_id = chat_id or settings.telegram_channel_id
+    if not settings.telegram_bot_token or not target_chat_id:
         return
     from datetime import timedelta
     from html import escape
@@ -127,9 +128,11 @@ def weekly_digest() -> None:
         clusters = db.scalars(select(Cluster).where(Cluster.published_at >= utcnow() - timedelta(days=7))
                               .order_by(Cluster.score.desc()).limit(10)).all()
         if not clusters:
-            return
-        lines = [f"{i}. {escape(c.title[:120])} — {c.score}/100" for i, c in enumerate(clusters, 1)]
+            text = "За последние 7 дней опубликованных проблем нет"
+        else:
+            lines = [f"{i}. {escape(c.title[:120])} — {c.score}/100" for i, c in enumerate(clusters, 1)]
+            text = "📌 <b>Лучшие проблемы недели</b>\n\n" + "\n".join(lines)
     with httpx.Client(timeout=30) as http:
         resp = http.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
-                         json={"chat_id": settings.telegram_channel_id, "text": "📌 <b>Лучшие проблемы недели</b>\n\n" + "\n".join(lines), "parse_mode": "HTML"})
+                         json={"chat_id": target_chat_id, "text": text, "parse_mode": "HTML"})
         resp.raise_for_status()
