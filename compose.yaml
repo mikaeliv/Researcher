@@ -36,6 +36,8 @@ services:
     build: .
     env_file: .env
     command: ["celery", "-A", "researcher.tasks:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_started}

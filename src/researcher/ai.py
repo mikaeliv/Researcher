@@ -24,7 +24,10 @@ class Finding(BaseModel):
 def _post(endpoint: str, payload: dict) -> dict:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required for analysis")
-    with httpx.Client(timeout=60) as http:
+    client_kwargs = {"timeout": 60}
+    if settings.openai_proxy_url:
+        client_kwargs["proxy"] = settings.openai_proxy_url
+    with httpx.Client(**client_kwargs) as http:
         resp = http.post("https://api.openai.com/v1/" + endpoint,
                          headers={"Authorization": "Bearer " + settings.openai_api_key}, json=payload)
         resp.raise_for_status()
