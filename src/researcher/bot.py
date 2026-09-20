@@ -1,6 +1,7 @@
 import asyncio
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
@@ -93,7 +94,13 @@ async def vote(callback: CallbackQuery) -> None:
 async def main() -> None:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN required")
-    bot = Bot(settings.telegram_bot_token)
+    session = AiohttpSession(
+        proxy="socks5://host.docker.internal:20170"
+    )
+    bot = Bot(
+        token=settings.telegram_bot_token,
+        session=session,
+    )
     await dp.start_polling(bot)
 
 
