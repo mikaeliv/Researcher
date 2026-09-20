@@ -24,8 +24,14 @@ async def status(message: Message) -> None:
     with SessionLocal() as db:
         pubs = db.scalar(select(func.count(Publication.id)))
         clusters = db.scalar(select(func.count(Cluster.id)))
+        published = db.scalar(select(func.count(Cluster.id)).where(Cluster.published_at.is_not(None)))
         enabled = db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True)))
-    await message.answer(f"Источников: {enabled}\nПубликаций: {pubs}\nКластеров: {clusters}")
+    await message.answer(
+        f"Активных источников: {enabled}\n"
+        f"Собрано записей: {pubs}\n"
+        f"Кластеров: {clusters}\n"
+        f"Опубликовано кластеров: {published}"
+    )
 
 
 @dp.message(Command("sources"))
