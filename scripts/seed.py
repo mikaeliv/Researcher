@@ -1,4 +1,4 @@
-"""Load explicitly chosen sources from JSON. Existing entries are updated by name."""
+"""Load explicitly chosen sources from JSON. Existing entries are updated or renamed."""
 import json
 import sys
 
@@ -17,11 +17,13 @@ def main() -> None:
             if data["kind"] not in allowed:
                 raise ValueError("Unknown kind " + data["kind"])
             source = db.scalar(select(Source).where(Source.name == data["name"]))
+            if source is None and data.get("previous_name"):
+                source = db.scalar(select(Source).where(Source.name == data["previous_name"]))
             if source is None:
                 source = Source(kind=data["kind"], name=data["name"], config=data["config"])
                 db.add(source)
             else:
-                source.kind, source.config = data["kind"], data["config"]
+                source.kind, source.name, source.config = data["kind"], data["name"], data["config"]
         db.commit()
 
 
