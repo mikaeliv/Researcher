@@ -66,8 +66,9 @@ def process_pending() -> None:
 def process_one(pub_id: int) -> None:
     with SessionLocal() as db:
         # Serialize AI analysis + cluster assignment to keep clusters and budget consistent.
-        if not db.scalar(select(func.pg_try_advisory_xact_lock(55_000_002))):
-            return
+        db.execute(
+            select(func.pg_advisory_xact_lock(55_000_002))
+        )
         pub = db.scalar(select(Publication).where(Publication.id == pub_id).with_for_update(skip_locked=True))
         if pub is None or pub.stage != Stage.NEW:
             return
