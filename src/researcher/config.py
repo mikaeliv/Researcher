@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     telegram_bot_token: str = ""
+    telegram_proxy_url: str = ""
     telegram_channel_id: str = ""
     telegram_owner_id: int | None = None
     reddit_client_id: str = ""
