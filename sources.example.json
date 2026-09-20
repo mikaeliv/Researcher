@@ -1,8 +1,0 @@
-[
-  {"kind": "rss", "name": "Example feed", "config": {"url": "https://example.com/feed.xml"}},
-  {"kind": "stackexchange", "name": "Stack Overflow: automation", "config": {"site": "stackoverflow", "tagged": "automation"}},
-  {"kind": "reddit", "name": "Reddit smallbusiness", "config": {"subreddit": "smallbusiness"}},
-  {"kind": "youtube", "name": "YouTube video comments", "config": {"video_id": "REPLACE_WITH_VIDEO_ID"}},
-  {"kind": "appstore", "name": "App Store reviews", "config": {"app_id": "REPLACE_WITH_APP_ID", "country": "us"}}
-]
-
