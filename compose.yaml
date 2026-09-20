@@ -52,6 +52,8 @@ services:
     build: .
     env_file: .env
     command: ["python", "-m", "researcher.bot"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate: {condition: service_completed_successfully}
     restart: unless-stopped
