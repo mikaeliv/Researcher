@@ -95,8 +95,8 @@ async def main() -> None:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN required")
     session = AiohttpSession(
-        proxy="socks5://host.docker.internal:20170"
-    )
+        proxy=settings.telegram_proxy_url
+    ) if settings.telegram_proxy_url else AiohttpSession()
     bot = Bot(
         token=settings.telegram_bot_token,
         session=session,
