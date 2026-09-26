@@ -3,7 +3,7 @@ name: Deploy Researcher
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   group: researcher-production
