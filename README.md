@@ -45,6 +45,18 @@ docker compose exec worker celery -A researcher.tasks:celery_app call researcher
 docker compose exec worker python scripts/smoke_collect.py "Hacker News / Ask HN" --context
 ```
 
+Для read-only проверки полного Sources v2 pipeline на реальных данных используйте:
+
+```bash
+docker compose exec worker python scripts/dry_run_sources.py --limit 10
+docker compose exec worker python scripts/dry_run_sources.py \
+  --source "Hacker News / Ask HN" --limit 10
+```
+
+Dry-run читает активные `Source` и данные бюджета `AiUsage`. Он не создаёт Publication,
+Evidence или Cluster, не меняет Source/cursor и не вызывает embeddings/clustering. Единственная
+разрешённая запись — штатная строка `AiUsage`, создаваемая production `analyze()`.
+
 ## Как работает обработка
 
 1. Celery Beat опрашивает источники каждые три часа. `fetch()` сохраняет title, original post, metadata, URL и дату. Каждый внешний ID уникален внутри источника.

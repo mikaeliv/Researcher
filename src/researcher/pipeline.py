@@ -41,12 +41,22 @@ def likely_candidate(text: str) -> bool:
     return not any(marker in lowered for marker in obvious_noise)
 
 
-def _raw_text(item: Item) -> str:
+def item_raw_text(item: Item) -> str:
     sections = ["ORIGINAL AUTHOR:\n" + item.text.strip()]
     if item.metadata:
         metadata = "\n".join(f"{key}: {value}" for key, value in item.metadata.items())
         sections.append("METADATA:\n" + metadata)
     return "\n\n".join(sections)
+
+
+def add_context(raw_text: str, context: str) -> str:
+    if not context:
+        return raw_text
+    return raw_text + "\n\nCOMMENTS FROM OTHER USERS:\n" + context
+
+
+def analysis_input(title: str, raw_text: str) -> str:
+    return f"TITLE:\n{title}\n\n{raw_text}"
 
 
 def accepts_as_evidence(finding: Finding) -> bool:
@@ -69,7 +79,7 @@ def ingest(db: Session, source: Source) -> int:
     count = 0
     # A source is only advanced after a successful fetch. Unique IDs protect replay.
     for item in items:
-        raw_text = _raw_text(item)
+        raw_text = item_raw_text(item)
         normalized = normalize(item.title + "\n" + raw_text)
         if not normalized:
             continue
@@ -145,10 +155,10 @@ def process(db: Session, pub: Publication) -> None:
         db.commit()
         return
     context = fetch_context(pub.source, pub.external_id)
+    pub.raw_text = add_context(pub.raw_text, context)
     if context:
-        pub.raw_text += "\n\nCOMMENTS FROM OTHER USERS:\n" + context
         pub.normalized_text = normalize(pub.title + "\n" + pub.raw_text)
-    finding = analyze(db, f"TITLE:\n{pub.title}\n\n{pub.raw_text}")
+    finding = analyze(db, analysis_input(pub.title, pub.raw_text))
     if not accepts_as_evidence(finding):
         pub.stage = Stage.REJECTED
         db.commit()
