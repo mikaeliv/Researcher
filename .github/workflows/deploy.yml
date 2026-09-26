@@ -1,26 +1,37 @@
-name: Deploy
+name: Deploy Researcher
+
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: researcher-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
+
     steps:
-      - name: Set up SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
-      - name: Update service on VPS
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" "cd '$DEPLOY_PATH' && git pull --ff-only origin main && docker compose up -d --build && docker compose ps"
 
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/researcher_deploy
+          chmod 600 ~/.ssh/researcher_deploy
+
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        run: |
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i ~/.ssh/researcher_deploy \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'cd /opt/researcher &&
+             git pull --ff-only &&
+             docker compose up -d --build &&
+             docker compose ps'
