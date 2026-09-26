@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     reddit_user_agent: str = "researcher/0.1 (contact: owner@example.com)"
     youtube_api_key: str = ""
     monthly_ai_budget_usd: float = 20
+    source_item_limit: int = 50
+    source_lookback_days: int = 30
+    max_comments_per_publication: int = 20
+    max_comment_depth: int = 2
     cluster_candidate_top_k: int = 3
     cluster_candidate_threshold: float = 0.35
     min_cluster_evidence: int = 2

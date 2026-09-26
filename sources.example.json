@@ -1,0 +1,62 @@
+[
+  {
+    "kind": "hackernews",
+    "name": "Hacker News / Ask HN",
+    "enabled": true,
+    "config": {"limit": 50}
+  },
+  {
+    "kind": "discourse",
+    "name": "Home Assistant / Feature Requests",
+    "enabled": true,
+    "config": {
+      "base_url": "https://community.home-assistant.io",
+      "category": "feature-requests/13",
+      "historical": true,
+      "lookback_days": 0,
+      "limit": 50
+    }
+  },
+  {
+    "kind": "lemmy",
+    "name": "Lemmy / Productivity",
+    "enabled": true,
+    "config": {
+      "base_url": "https://lemmy.world",
+      "community": "productivity",
+      "limit": 50
+    }
+  },
+  {
+    "kind": "lemmy",
+    "name": "Lemmy / Selfhosted",
+    "enabled": true,
+    "config": {
+      "base_url": "https://lemmy.world",
+      "community": "selfhosted",
+      "limit": 50
+    }
+  },
+  {
+    "kind": "lemmy",
+    "name": "Lemmy / Apps",
+    "enabled": true,
+    "config": {
+      "base_url": "https://lemmy.world",
+      "community": "lemmyapps",
+      "limit": 50
+    }
+  },
+  {
+    "kind": "stackexchange",
+    "name": "Stack Exchange / Personal Finance",
+    "enabled": true,
+    "config": {"site": "money"}
+  },
+  {
+    "kind": "stackexchange",
+    "name": "Stack Exchange / Home Improvement",
+    "enabled": true,
+    "config": {"site": "diy"}
+  }
+]

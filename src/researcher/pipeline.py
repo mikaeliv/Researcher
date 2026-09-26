@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from researcher.ai import analyze, embed, same_problem
+from researcher.ai import Classification, Finding, analyze, embed, same_problem
 from researcher.config import settings
-from researcher.connectors.base import fetch
+from researcher.connectors.base import Item, fetch, fetch_context
 from researcher.models import Cluster, Evidence, Publication, Source, Stage
 
 log = logging.getLogger(__name__)
@@ -21,7 +21,47 @@ def normalize(value: str) -> str:
 
 
 def useful(text: str) -> bool:
-    return len(text) >= 55 and len(text.split()) >= 9
+    return len(text) >= 20 and len(text.split()) >= 4
+
+
+def likely_candidate(text: str) -> bool:
+    """Reject only obvious pre-LLM noise; ambiguous publications deliberately pass."""
+    if not useful(text):
+        return False
+    lowered = text.casefold()
+    obvious_noise = (
+        "who is hiring",
+        "who wants to be hired",
+        "freelancer? seeking freelancer",
+        "weekly roundup",
+        "monthly roundup",
+        "release notes",
+        "changelog",
+    )
+    return not any(marker in lowered for marker in obvious_noise)
+
+
+def _raw_text(item: Item) -> str:
+    sections = ["ORIGINAL AUTHOR:\n" + item.text.strip()]
+    if item.metadata:
+        metadata = "\n".join(f"{key}: {value}" for key, value in item.metadata.items())
+        sections.append("METADATA:\n" + metadata)
+    return "\n\n".join(sections)
+
+
+def accepts_as_evidence(finding: Finding) -> bool:
+    accepted = {
+        Classification.PRODUCT_OPPORTUNITY,
+        Classification.FEATURE_REQUEST,
+        Classification.WORKFLOW_PAIN,
+        Classification.SERVICE_GAP,
+    }
+    return (
+        finding.contains_pain
+        and finding.product_solvable
+        and finding.classification in accepted
+        and finding.confidence >= 0.65
+    )
 
 
 def ingest(db: Session, source: Source) -> int:
@@ -29,14 +69,15 @@ def ingest(db: Session, source: Source) -> int:
     count = 0
     # A source is only advanced after a successful fetch. Unique IDs protect replay.
     for item in items:
-        normalized = normalize(item.title + "\n" + item.text)
-        if not useful(normalized):
+        raw_text = _raw_text(item)
+        normalized = normalize(item.title + "\n" + raw_text)
+        if not normalized:
             continue
         if db.scalar(select(Publication.id).where(Publication.source_id == source.id,
                                                    Publication.external_id == item.external_id)):
             continue
         db.add(Publication(source_id=source.id, external_id=item.external_id, url=item.url,
-                           title=item.title, raw_text=item.text, normalized_text=normalized,
+                           title=item.title, raw_text=raw_text, normalized_text=normalized,
                            published_at=item.published_at))
         count += 1
     source.last_success_at = datetime.now(UTC)
@@ -99,8 +140,16 @@ def score_cluster(db: Session, cluster: Cluster) -> int:
 
 
 def process(db: Session, pub: Publication) -> None:
-    finding = analyze(db, pub.normalized_text)
-    if not finding.contains_pain or finding.confidence < 0.65:
+    if not likely_candidate(pub.normalized_text):
+        pub.stage = Stage.FILTERED
+        db.commit()
+        return
+    context = fetch_context(pub.source, pub.external_id)
+    if context:
+        pub.raw_text += "\n\nCOMMENTS FROM OTHER USERS:\n" + context
+        pub.normalized_text = normalize(pub.title + "\n" + pub.raw_text)
+    finding = analyze(db, f"TITLE:\n{pub.title}\n\n{pub.raw_text}")
+    if not accepts_as_evidence(finding):
         pub.stage = Stage.REJECTED
         db.commit()
         return

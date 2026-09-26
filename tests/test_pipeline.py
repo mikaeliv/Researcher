@@ -1,8 +1,15 @@
 from unittest.mock import MagicMock
 
-from researcher.ai import Finding
-from researcher.models import Cluster, Evidence
-from researcher.pipeline import _attach_cluster, normalize, useful
+from researcher.ai import Classification, Finding
+from researcher.models import Cluster, Evidence, Publication, Source, Stage
+from researcher.pipeline import (
+    _attach_cluster,
+    accepts_as_evidence,
+    likely_candidate,
+    normalize,
+    process,
+    useful,
+)
 
 
 def test_normalize_removes_email_and_markup():
@@ -21,6 +28,112 @@ def test_confidence_is_bounded():
         pass
     else:
         raise AssertionError("Confidence above one must be rejected")
+
+
+def finding(
+    classification: Classification,
+    product_solvable: bool,
+    contains_pain: bool = True,
+) -> Finding:
+    return Finding(
+        contains_pain=contains_pain,
+        classification=classification,
+        product_solvable=product_solvable,
+        problem="A recurring problem",
+        audience="People",
+        workaround=None,
+        quote="problem",
+        frequency=None,
+        loss=None,
+        willingness_to_pay=False,
+        confidence=0.9,
+    )
+
+
+def test_candidate_filter_favors_recall():
+    assert likely_candidate(
+        "My client messages are spread across Slack, WhatsApp and email and I keep missing them."
+    )
+    assert likely_candidate(
+        "Google Sign-In throws ApiException 10 after installing from Play Store"
+    )
+    assert not likely_candidate("Ask HN: Who is hiring? (September 2026)")
+    assert not likely_candidate("Help")
+
+
+def test_evidence_acceptance_is_centralized():
+    for classification in (
+        Classification.PRODUCT_OPPORTUNITY,
+        Classification.WORKFLOW_PAIN,
+        Classification.SERVICE_GAP,
+        Classification.FEATURE_REQUEST,
+    ):
+        assert accepts_as_evidence(finding(classification, product_solvable=True))
+    assert not accepts_as_evidence(
+        finding(Classification.FEATURE_REQUEST, product_solvable=False)
+    )
+    for classification in (
+        Classification.TECH_SUPPORT,
+        Classification.BUG_REPORT,
+        Classification.CONTENT_REQUEST,
+        Classification.OTHER,
+    ):
+        assert not accepts_as_evidence(finding(classification, product_solvable=False))
+
+
+def test_process_filters_before_fetching_context_or_calling_llm(monkeypatch):
+    db = MagicMock()
+    source = Source(kind="hackernews", name="HN", config={})
+    pub = Publication(
+        source=source,
+        external_id="1",
+        url="https://example.com/1",
+        title="Who is hiring?",
+        raw_text="ORIGINAL AUTHOR:\nSeptember jobs",
+        normalized_text="Ask HN: Who is hiring? September jobs",
+    )
+    context = MagicMock()
+    analysis = MagicMock()
+    monkeypatch.setattr("researcher.pipeline.fetch_context", context)
+    monkeypatch.setattr("researcher.pipeline.analyze", analysis)
+
+    process(db, pub)
+
+    assert pub.stage == Stage.FILTERED
+    context.assert_not_called()
+    analysis.assert_not_called()
+    db.commit.assert_called_once()
+
+
+def test_process_fetches_context_only_after_candidate_filter(monkeypatch):
+    db = MagicMock()
+    source = Source(kind="lemmy", name="Lemmy", config={})
+    pub = Publication(
+        source=source,
+        external_id="2",
+        url="https://example.com/2",
+        title="Messages keep getting lost",
+        raw_text="ORIGINAL AUTHOR:\nI miss customer messages across several apps.",
+        normalized_text="Messages keep getting lost I miss customer messages across several apps.",
+    )
+    calls = []
+
+    def context(*_args):
+        calls.append("context")
+        return "[comment] This happens to me too."
+
+    def analyze(_db, text):
+        calls.append("analyze")
+        assert "COMMENTS FROM OTHER USERS" in text
+        return finding(Classification.OTHER, product_solvable=False)
+
+    monkeypatch.setattr("researcher.pipeline.fetch_context", context)
+    monkeypatch.setattr("researcher.pipeline.analyze", analyze)
+
+    process(db, pub)
+
+    assert calls == ["context", "analyze"]
+    assert pub.stage == Stage.REJECTED
 
 
 def evidence(audience: str = "Android developers") -> Evidence:

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from enum import StrEnum
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,16 +10,30 @@ from researcher.config import settings
 from researcher.models import AiUsage
 
 
+class Classification(StrEnum):
+    PRODUCT_OPPORTUNITY = "PRODUCT_OPPORTUNITY"
+    FEATURE_REQUEST = "FEATURE_REQUEST"
+    WORKFLOW_PAIN = "WORKFLOW_PAIN"
+    SERVICE_GAP = "SERVICE_GAP"
+    TECH_SUPPORT = "TECH_SUPPORT"
+    BUG_REPORT = "BUG_REPORT"
+    CONTENT_REQUEST = "CONTENT_REQUEST"
+    OTHER = "OTHER"
+
+
 class Finding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     contains_pain: bool
-    problem: str = ""
-    audience: str = ""
-    workaround: str | None = None
-    quote: str = ""
-    frequency: str | None = None
-    loss: str | None = None
-    willingness_to_pay: bool = False
-    confidence: float = Field(default=0, ge=0, le=1)
+    classification: Classification
+    product_solvable: bool
+    problem: str
+    audience: str
+    workaround: str | None
+    quote: str
+    frequency: str | None
+    loss: str | None
+    willingness_to_pay: bool
+    confidence: float = Field(ge=0, le=1)
 
 
 class ProblemMatch(BaseModel):
@@ -113,34 +128,40 @@ def analyze(db: Session, text: str) -> Finding:
         raise RuntimeError("Monthly AI budget reached")
 
     instruction = (
-        "Extract an actual problem that a digital product might solve. "
-        "Use only evidence in the text. "
-        "Return contains_pain=false if there is no concrete problem. "
+        "Classify the original author's concrete problem and extract evidence for it. "
+        "Comments may confirm frequency, workarounds, loss, willingness to pay, or related "
+        "use cases, but a different problem mentioned only in a comment is not the original "
+        "publication's problem. Use only evidence in the input. "
+        "PRODUCT_OPPORTUNITY is a problem that could become a standalone software product. "
+        "WORKFLOW_PAIN is a manual, fragmented, repetitive, or inconvenient workflow. "
+        "SERVICE_GAP means the author cannot find a suitable service. FEATURE_REQUEST means "
+        "a missing feature in an existing product. Set product_solvable=true for FEATURE_REQUEST "
+        "only when the underlying problem is broad enough for a separate software product; "
+        "narrow product-specific requests such as adding dark mode must be false. "
+        "TECH_SUPPORT is configuration or usage help, BUG_REPORT is a specific software bug, "
+        "CONTENT_REQUEST asks for information or content, and OTHER covers the rest. "
+        "Set contains_pain=false and product_solvable=false when there is no concrete problem. "
         "Quote must be an exact substring of the input. "
         "Do not infer payment or measurable losses without explicit evidence. "
-        "Use the original language. "
-        "Return JSON matching the schema."
+        "For self-hosted solution requests, extract the underlying need rather than merely "
+        "restating the desired technology. Use the original language."
     )
 
     payload = {
         "model": settings.openai_model,
-        "instructions": (
-            instruction
-            + " Schema: "
-            + str(Finding.model_json_schema())
-        ),
+        "instructions": instruction,
 
-        # Для json_object OpenAI требует,
-        # чтобы в input явно присутствовало слово JSON/json.
         "input": (
-            "Analyze the following text and return the result as JSON.\n\n"
-            "TEXT:\n"
+            "Analyze the following publication.\n\n"
             + text[:6000]
         ),
 
         "text": {
             "format": {
-                "type": "json_object",
+                "type": "json_schema",
+                "name": "finding",
+                "strict": True,
+                "schema": Finding.model_json_schema(),
             }
         },
     }
@@ -176,7 +197,11 @@ def analyze(db: Session, text: str) -> Finding:
         not result.quote
         or result.quote not in text
     ):
-        return Finding(contains_pain=False)
+        return result.model_copy(update={
+            "contains_pain": False,
+            "classification": Classification.OTHER,
+            "product_solvable": False,
+        })
 
     return result
 

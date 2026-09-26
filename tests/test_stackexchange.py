@@ -56,3 +56,26 @@ def test_fetches_tags_separately_deduplicates_and_honors_backoff(monkeypatch):
     assert items[0].title == "Android & Kotlin"
     assert items[1].text == "Second body"
     assert items[1].published_at == datetime.fromtimestamp(1_700_000_002, UTC)
+
+
+@respx.mock
+def test_non_programming_site_uses_existing_collector():
+    route = respx.get(stackexchange.STACK_EXCHANGE_URL).mock(return_value=httpx.Response(200, json={
+        "items": [{
+            "question_id": 3,
+            "link": "https://money.stackexchange.com/q/3",
+            "title": "How can I track irregular household bills?",
+            "body": "<p>I copy each bill into a spreadsheet manually.</p>",
+            "creation_date": 1_700_000_003,
+        }],
+    }))
+    source = Source(
+        kind="stackexchange",
+        name="Stack Exchange / Personal Finance",
+        config={"site": "money"},
+    )
+
+    items = stackexchange.fetch_stackexchange(source)
+
+    assert route.calls[0].request.url.params["site"] == "money"
+    assert items[0].external_id == "3"

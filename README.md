@@ -1,6 +1,6 @@
 # Researcher
 
-Сервис собирает публичные сообщения, извлекает подтверждённые проблемы, группирует похожие свидетельства и публикует карточки в закрытый Telegram-канал. Есть RSS, Stack Exchange, Reddit OAuth, комментарии заданных видео YouTube и публичная лента отзывов Apple App Store. Закрытые чаты, Google Play reviews сторонних приложений и обход ограничений площадок не поддерживаются.
+Сервис собирает публичные сообщения, извлекает подтверждённые проблемы, группирует похожие свидетельства и публикует карточки в закрытый Telegram-канал. Основной набор источников v2: Ask HN, Discourse, Lemmy и выбранные сайты Stack Exchange. Старые RSS, Reddit, YouTube и App Store collectors сохранены, но не входят в активный набор v2.
 
 ## Быстрый старт
 
@@ -14,37 +14,45 @@ docker compose ps
 curl http://127.0.0.1:8000/health
 ```
 
-Создайте `sources.json` на основе `sources.example.json`, замените демонстрационные URL/ID, удалите источники без ключей и загрузите:
+Создайте `sources.json` на основе `sources.example.json`, проверьте communities и лимиты и загрузите:
 
 ```bash
 docker compose cp sources.json worker:/tmp/sources.json
-docker compose exec worker python scripts/seed.py /tmp/sources.json
+docker compose exec worker python scripts/seed.py /tmp/sources.json --disable-unlisted
 docker compose exec worker celery -A researcher.tasks:celery_app call researcher.tasks.collect_all
 ```
 
-Не коммитьте `.env`, `sources.json` с приватными данными или дампы БД. Источники с отсутствующими ключами удалите из файла до настройки.
+`--disable-unlisted` выключает, но не удаляет старые источники. Без флага seed оставляет не перечисленные источники как есть.
+
+Не коммитьте `.env`, локальный `sources.json` с приватными данными или дампы БД.
 
 ## Telegram
 
 Создайте бота через BotFather и приватный канал. Назначьте бота администратором с правом публикации. В `.env` задайте токен, числовой ID канала и свой числовой Telegram ID. Запустите бота и отправьте `/status` в личный чат. Доступные команды: `/status`, `/sources`, `/pause`, `/resume`, `/collect`, `/publish`, `/digest`. Нажатия на кнопки карточек сохраняются как обратная связь. Самообучение рейтинга на реакциях пока не включено.
 
-## Stack Overflow
+## Sources v2
 
-Ключ Stack Apps и OAuth для публичных вопросов не нужны. Один источник принимает список `config.tags`; каждый тег запрашивается отдельно, потому что несколько тегов в параметре `tagged` означают логическое И. Коннектор получает тело вопроса через `filter=withbody`, удаляет дубликаты между тегами и соблюдает возвращаемый API интервал `backoff`. Пример настройки есть в `sources.example.json`.
+- Hacker News использует официальный Ask HN feed и загружает ограниченный набор top-level и nested comments только после первичного фильтра.
+- Discourse настраивается через `base_url` и `category`. Home Assistant Feature Requests используется как исторический архив, а не как постоянный свежий feed.
+- Каждый Lemmy community является отдельным Source и настраивается через `base_url` и `community`.
+- Stack Exchange Personal Finance (`money`) и Home Improvement (`diy`) используют существующий generic collector. Ключ Stack Apps для публичных вопросов не нужен.
 
-## RSS и YouTube
+Общие operational limits задаются через `SOURCE_ITEM_LIMIT`, `SOURCE_LOOKBACK_DAYS`, `MAX_COMMENTS_PER_PUBLICATION` и `MAX_COMMENT_DEPTH`. Значения `limit`, `lookback_days`, `max_comments` и `max_comment_depth` можно переопределить в `Source.config`.
 
-RSS лучше направлять на обсуждения с пользовательскими проблемами, а не на новостные ленты. Рабочий набор: Ask HN через `https://hnrss.org/ask?link=comments&count=50`, Lobsters через `https://lobste.rs/rss`, теги DEV через `https://dev.to/feed/tag/<tag>`. У Indie Hackers нет стабильной официальной RSS-ленты; используемый `https://ihrss.io/newest` является сторонним источником и может перестать работать.
+Перед записью в БД и вызовом LLM можно безопасно проверить parsing одного источника:
 
-Источник YouTube принимает прежний `video_id` либо список `channel_handles`. Во втором режиме он находит uploads-плейлист каждого канала, берёт последние `videos_per_channel` видео и объединяет по ID верхнеуровневые комментарии из сортировок `relevance` и `time`. `comments_per_order` ограничивает объём каждой сортировки. Ответы на комментарии и дальнейшие страницы пока не загружаются.
+```bash
+docker compose exec worker python scripts/smoke_collect.py "Hacker News / Ask HN" --context
+```
 
 ## Как работает обработка
 
-1. Celery Beat опрашивает источники каждые три часа. Коннекторы сохраняют текст, URL и дату. Каждый внешний ID уникален внутри источника.
-2. Каждые десять минут воркер анализирует до 100 новых записей за проход. Текст без явной боли отбрасывается. В модели хранится точная цитата исходного сообщения; некорректная цитата приводит к отклонению.
-3. Для принятой боли создаётся embedding. Ближайший кластер находится в PostgreSQL/pgvector; добавление требует низкой cosine distance и одинаковой аудитории.
-4. Оценка учитывает число сигналов, число источников, заявленные потери, обходное решение и готовность платить. Публикация требует как минимум два свидетельства из двух настроенных источников и проходной балл.
-5. В 09:30, 13:30 и 18:30 UTC публикуется не больше `MAX_DAILY_POSTS` карточек в сутки. Дайджест публикуется в понедельник в 10:00 UTC.
+1. Celery Beat опрашивает источники каждые три часа. `fetch()` сохраняет title, original post, metadata, URL и дату. Каждый внешний ID уникален внутри источника.
+2. Каждые десять минут воркер проверяет до 100 новых записей. Явный мусор получает stage `filtered`; сомнительные публикации проходят дальше. Для кандидатов `fetch_context()` получает ограниченный набор comments/replies.
+3. LLM отдельно возвращает pain classification и `product_solvable`. `filtered` означает отказ до LLM, `rejected` — отказ после LLM. Точная цитата обязательна.
+4. Для принятой боли создаётся embedding. Ближайший кластер находится в PostgreSQL/pgvector; clustering v2 не изменён.
+5. Оценка учитывает число сигналов, число источников, заявленные потери, обходное решение и готовность платить. Публикация требует как минимум два свидетельства из двух настроенных источников и проходной балл.
+6. В 09:30, 13:30 и 18:30 UTC публикуется не больше `MAX_DAILY_POSTS` карточек в сутки. Дайджест публикуется в понедельник в 10:00 UTC.
 
 ## Операционные детали
 

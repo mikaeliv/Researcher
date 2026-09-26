@@ -27,6 +27,7 @@ class Base(DeclarativeBase):
 
 class Stage(StrEnum):
     NEW = "new"
+    FILTERED = "filtered"
     ANALYZED = "analyzed"
     REJECTED = "rejected"
     FAILED = "failed"
@@ -114,4 +115,3 @@ class Feedback(Base):
     user_id: Mapped[int] = mapped_column(Integer)
     rating: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-

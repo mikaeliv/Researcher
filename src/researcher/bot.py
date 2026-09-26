@@ -27,12 +27,36 @@ async def status(message: Message) -> None:
         clusters = db.scalar(select(func.count(Cluster.id)))
         published = db.scalar(select(func.count(Cluster.id)).where(Cluster.published_at.is_not(None)))
         enabled = db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True)))
-    await message.answer(
+        source_rows = db.scalars(
+            select(Source).where(Source.enabled.is_(True)).order_by(Source.id)
+        ).all()
+        stage_rows = db.execute(
+            select(Publication.source_id, Publication.stage, func.count(Publication.id))
+            .group_by(Publication.source_id, Publication.stage)
+        ).all()
+    counts = {(source_id, stage): count for source_id, stage, count in stage_rows}
+    details = []
+    for source in source_rows:
+        by_stage = {stage: counts.get((source.id, stage), 0) for stage in (
+            "new", "filtered", "analyzed", "rejected", "failed",
+        )}
+        raw = sum(by_stage.values())
+        analyzed = by_stage["analyzed"] + by_stage["rejected"]
+        details.append(
+            f"{source.name}: raw={raw}, pre-LLM filtered={by_stage['filtered']}, "
+            f"pending={by_stage['new']}, LLM analyzed={analyzed}, "
+            f"accepted={by_stage['analyzed']}, "
+            f"LLM rejected={by_stage['rejected']}, failed={by_stage['failed']}"
+        )
+    text = (
         f"Активных источников: {enabled}\n"
         f"Собрано записей: {pubs}\n"
         f"Кластеров: {clusters}\n"
         f"Опубликовано кластеров: {published}"
     )
+    if details:
+        text += "\n\nПо источникам:\n" + "\n".join(details)
+    await message.answer(text[:4000])
 
 
 @dp.message(Command("sources"))
