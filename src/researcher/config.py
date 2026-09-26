@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     reddit_user_agent: str = "researcher/0.1 (contact: owner@example.com)"
     youtube_api_key: str = ""
     monthly_ai_budget_usd: float = 20
+    cluster_candidate_top_k: int = 3
+    cluster_candidate_threshold: float = 0.35
     min_cluster_evidence: int = 2
     min_cluster_sources: int = 2
     max_daily_posts: int = 5
@@ -26,4 +28,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

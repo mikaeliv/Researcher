@@ -1,14 +1,17 @@
 import html
+import logging
 import re
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from researcher.ai import analyze, embed
+from researcher.ai import analyze, embed, same_problem
 from researcher.config import settings
 from researcher.connectors.base import fetch
 from researcher.models import Cluster, Evidence, Publication, Source, Stage
+
+log = logging.getLogger(__name__)
 
 
 def normalize(value: str) -> str:
@@ -47,12 +50,29 @@ def ingest(db: Session, source: Source) -> int:
 
 
 def _attach_cluster(db: Session, evidence: Evidence, vector: list[float]) -> Cluster:
-    candidate = db.scalar(select(Cluster).where(Cluster.embedding.is_not(None))
-                          .order_by(Cluster.embedding.cosine_distance(vector)).limit(1))
-    # Conservative threshold: independent problems can share vocabulary.
-    if candidate is not None:
-        distance = db.scalar(select(Cluster.embedding.cosine_distance(vector)).where(Cluster.id == candidate.id))
-        if distance is not None and distance < 0.16 and candidate.audience.casefold() == evidence.audience.casefold():
+    distance = Cluster.embedding.cosine_distance(vector)
+    candidates = db.execute(
+        select(Cluster, distance.label("distance"))
+        .where(Cluster.embedding.is_not(None), distance < settings.cluster_candidate_threshold)
+        .order_by(distance)
+        .limit(settings.cluster_candidate_top_k)
+    ).all()
+    for candidate, candidate_distance in candidates:
+        if candidate_distance is None or candidate_distance >= settings.cluster_candidate_threshold:
+            continue
+        try:
+            matches = same_problem(
+                db,
+                evidence.problem,
+                evidence.audience,
+                candidate.title,
+                candidate.audience,
+                candidate.description,
+            )
+        except Exception:
+            log.exception("Semantic cluster verification failed; creating a new cluster")
+            break
+        if matches:
             candidate.last_seen_at = datetime.now(UTC)
             return candidate
     cluster = Cluster(title=evidence.problem, audience=evidence.audience,

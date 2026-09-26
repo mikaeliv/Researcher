@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,11 @@ class Finding(BaseModel):
     loss: str | None = None
     willingness_to_pay: bool = False
     confidence: float = Field(default=0, ge=0, le=1)
+
+
+class ProblemMatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    same_problem: bool
 
 
 def _post(endpoint: str, payload: dict) -> dict:
@@ -174,6 +179,56 @@ def analyze(db: Session, text: str) -> Finding:
         return Finding(contains_pain=False)
 
     return result
+
+
+def same_problem(
+    db: Session,
+    evidence_problem: str,
+    evidence_audience: str,
+    cluster_title: str,
+    cluster_audience: str,
+    cluster_description: str,
+) -> bool:
+    if not budget_available(db):
+        raise RuntimeError("Monthly AI budget reached")
+
+    data = _post(
+        "responses",
+        {
+            "model": settings.openai_model,
+            "instructions": (
+                "Decide whether the evidence and cluster describe the same concrete user problem. "
+                "Matching technology, audience, or broad error category is not enough. "
+                "Different root causes or failure modes are different problems. "
+                "Different wording or language for the same problem is a match."
+            ),
+            "input": (
+                f"EVIDENCE PROBLEM: {evidence_problem}\n"
+                f"EVIDENCE AUDIENCE: {evidence_audience}\n"
+                f"CLUSTER TITLE: {cluster_title}\n"
+                f"CLUSTER AUDIENCE: {cluster_audience}\n"
+                f"CLUSTER DESCRIPTION: {cluster_description}"
+            ),
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "problem_match",
+                    "strict": True,
+                    "schema": ProblemMatch.model_json_schema(),
+                }
+            },
+        },
+    )
+    record_usage(db, settings.openai_model, data.get("usage", {}), 0.20, 1.20)
+    content = "".join(
+        c.get("text", "")
+        for output in data.get("output", [])
+        for c in output.get("content", [])
+        if c.get("type") == "output_text"
+    )
+    if not content:
+        raise RuntimeError(f"OpenAI returned no output_text: {data}")
+    return ProblemMatch.model_validate_json(content).same_problem
 
 
 def embed(db: Session, text: str) -> list[float]:
