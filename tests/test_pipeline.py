@@ -7,6 +7,7 @@ from researcher.pipeline import (
     accepts_as_evidence,
     likely_candidate,
     normalize,
+    obvious_content_request,
     process,
     useful,
 )
@@ -60,6 +61,52 @@ def test_candidate_filter_favors_recall():
     )
     assert not likely_candidate("Ask HN: Who is hiring? (September 2026)")
     assert not likely_candidate("Help")
+
+
+def test_obvious_content_requests_are_rejected():
+    requests = (
+        "What is the difference between an ETF and an index fund?",
+        "Can someone explain why bond prices fall when interest rates rise?",
+        "Can anyone explain the difference between a traditional IRA and a Roth IRA?",
+    )
+
+    assert all(obvious_content_request(text) for text in requests)
+    assert not any(likely_candidate(text) for text in requests)
+
+
+def test_ambiguous_product_solvable_requests_pass():
+    candidates = (
+        (
+            "Can anyone recommend a tool for sharing files with clients without giving them "
+            "access to our whole drive?"
+        ),
+        (
+            "Looking for a tool to automate invoice reconciliation because we spend hours doing "
+            "it manually."
+        ),
+        (
+            "How does everyone manage hundreds of self-hosted services without losing track of "
+            "configuration?"
+        ),
+        (
+            "There should be a service that alerts me when subscriptions silently increase "
+            "their prices."
+        ),
+        "I spend several hours every week copying transactions between these two systems.",
+    )
+
+    assert not any(obvious_content_request(text) for text in candidates)
+    assert all(likely_candidate(text) for text in candidates)
+
+
+def test_existing_obvious_noise_is_rejected():
+    noise = (
+        "Ask HN: Who is hiring? (September 2026)",
+        "This week's weekly roundup of interesting projects",
+        "Product release notes for September 2026",
+    )
+
+    assert not any(likely_candidate(text) for text in noise)
 
 
 def test_evidence_acceptance_is_centralized():

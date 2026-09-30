@@ -24,6 +24,19 @@ def useful(text: str) -> bool:
     return len(text) >= 20 and len(text.split()) >= 4
 
 
+def obvious_content_request(text: str) -> bool:
+    lowered = text.casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "what is the difference between ",
+            "what's the difference between ",
+            "can someone explain ",
+            "can anyone explain ",
+        )
+    )
+
+
 def likely_candidate(text: str) -> bool:
     """Reject only obvious pre-LLM noise; ambiguous publications deliberately pass."""
     if not useful(text):
@@ -38,7 +51,7 @@ def likely_candidate(text: str) -> bool:
         "release notes",
         "changelog",
     )
-    return not any(marker in lowered for marker in obvious_noise)
+    return not any(marker in lowered for marker in obvious_noise) and not obvious_content_request(text)
 
 
 def item_raw_text(item: Item) -> str:
