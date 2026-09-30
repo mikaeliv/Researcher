@@ -56,7 +56,7 @@
   {
     "kind": "stackexchange",
     "name": "Stack Exchange / Home Improvement",
-    "enabled": true,
+    "enabled": false,
     "config": {"site": "diy"}
   }
 ]
