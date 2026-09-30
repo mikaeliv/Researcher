@@ -19,11 +19,13 @@ def test_seed_can_disable_unlisted_sources(monkeypatch):
         "config": {"limit": 10},
     }]
     monkeypatch.setattr(seed, "SessionLocal", MagicMock(return_value=session))
-    monkeypatch.setattr("builtins.open", mock_open(read_data=json.dumps(payload)))
-    monkeypatch.setattr(sys, "argv", ["seed.py", "sources.json", "--disable-unlisted"])
+    open = mock_open(read_data=json.dumps(payload))
+    monkeypatch.setattr("builtins.open", open)
+    monkeypatch.setattr(sys, "argv", ["seed.py", "--disable-unlisted"])
 
     seed.main()
 
+    open.assert_called_once_with(seed.SOURCES_PATH, encoding="utf-8")
     assert old_source.enabled is False
     created = db.add.call_args.args[0]
     assert created.name == "Hacker News / Ask HN"

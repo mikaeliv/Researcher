@@ -14,17 +14,16 @@ docker compose ps
 curl http://127.0.0.1:8000/health
 ```
 
-Создайте `sources.json` на основе `sources.example.json`, проверьте communities и лимиты и загрузите:
+Проверьте хранящиеся в Git communities и лимиты в `sources.json`, затем синхронизируйте таблицу Source:
 
 ```bash
-docker compose cp sources.json worker:/tmp/sources.json
-docker compose exec worker python scripts/seed.py /tmp/sources.json --disable-unlisted
+docker compose exec worker python scripts/seed.py --disable-unlisted
 docker compose exec worker celery -A researcher.tasks:celery_app call researcher.tasks.collect_all
 ```
 
 `--disable-unlisted` выключает, но не удаляет старые источники. Без флага seed оставляет не перечисленные источники как есть.
 
-Не коммитьте `.env`, локальный `sources.json` с приватными данными или дампы БД.
+Не добавляйте credentials в `sources.json`. Не коммитьте `.env` или дампы БД.
 
 ## Telegram
 

@@ -7,6 +7,7 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 COPY scripts ./scripts
 RUN pip install --no-cache-dir .
+COPY sources.json ./
 RUN useradd --create-home researcher
 USER researcher
 CMD ["uvicorn", "researcher.api:app", "--host", "0.0.0.0", "--port", "8000"]

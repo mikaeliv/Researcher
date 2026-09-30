@@ -1,15 +1,18 @@
-"""Load explicitly chosen sources from JSON. Existing entries are updated or renamed."""
+"""Load sources.json. Existing entries are updated or renamed."""
 import json
 import sys
+from pathlib import Path
 
 from sqlalchemy import select
 
 from researcher.db import SessionLocal
 from researcher.models import Source
 
+SOURCES_PATH = Path(__file__).resolve().parents[1] / "sources.json"
+
 
 def main() -> None:
-    with open(sys.argv[1], encoding="utf-8") as stream:
+    with open(SOURCES_PATH, encoding="utf-8") as stream:
         sources = json.load(stream)
     allowed = {
         "rss", "stackexchange", "reddit", "youtube", "appstore",
@@ -17,7 +20,7 @@ def main() -> None:
     }
     with SessionLocal() as db:
         names = {data["name"] for data in sources}
-        if "--disable-unlisted" in sys.argv[2:]:
+        if "--disable-unlisted" in sys.argv[1:]:
             for source in db.scalars(select(Source).where(Source.name.not_in(names))).all():
                 source.enabled = False
         for data in sources:
