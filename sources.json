@@ -8,7 +8,7 @@
   {
     "kind": "discourse",
     "name": "Home Assistant / Feature Requests",
-    "enabled": true,
+    "enabled": false,
     "config": {
       "base_url": "https://community.home-assistant.io",
       "category": "feature-requests/13",
