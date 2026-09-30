@@ -68,6 +68,10 @@ def test_obvious_content_requests_are_rejected():
         "What is the difference between an ETF and an index fund?",
         "Can someone explain why bond prices fall when interest rates rise?",
         "Can anyone explain the difference between a traditional IRA and a Roth IRA?",
+        "Why do people buy expensive houses, cars, and smartphones on credit?",
+        "Why would I ever not use instant wire transfer?",
+        "What is the upshot of TWR calculation of an investment portfolio",
+        "Will I be taxed if I bet at least $1 on a prediction market app?",
     )
 
     assert all(obvious_content_request(text) for text in requests)
@@ -93,6 +97,16 @@ def test_ambiguous_product_solvable_requests_pass():
             "their prices."
         ),
         "I spend several hours every week copying transactions between these two systems.",
+        "How to invest long-term when moving countries frequently?",
+        (
+            "How do I budget effectively when income arrives at irregular intervals rather than "
+            "a fixed monthly salary?"
+        ),
+        "What are my banking options as a minor that doesn't want to involve my parents?",
+        (
+            "How should I structure a monthly budget when my expenses vary significantly from "
+            "month to month?"
+        ),
     )
 
     assert not any(obvious_content_request(text) for text in candidates)

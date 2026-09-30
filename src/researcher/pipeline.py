@@ -25,14 +25,16 @@ def useful(text: str) -> bool:
 
 
 def obvious_content_request(text: str) -> bool:
-    lowered = text.casefold()
-    return any(
-        marker in lowered
-        for marker in (
+    return text.casefold().startswith(
+        (
             "what is the difference between ",
             "what's the difference between ",
             "can someone explain ",
             "can anyone explain ",
+            "why do people ",
+            "what is the upshot of ",
+            "why would i ever not ",
+            "will i be taxed if ",
         )
     )
 
