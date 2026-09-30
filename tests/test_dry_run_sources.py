@@ -97,6 +97,22 @@ def test_accept_and_reject_use_production_gate(monkeypatch):
     assert stats.rejected == 1
 
 
+def test_solved_problem_is_counted_in_summary(monkeypatch):
+    emit = Mock()
+    monkeypatch.setattr(dry_run_sources, "fetch", Mock(return_value=[item("1")]))
+    monkeypatch.setattr(dry_run_sources, "fetch_context", Mock(return_value=""))
+    monkeypatch.setattr(
+        dry_run_sources,
+        "analyze",
+        Mock(return_value=finding(Classification.SOLVED_PROBLEM)),
+    )
+
+    stats = dry_run_sources.run_source(MagicMock(), source(), 10, emit=emit)
+
+    assert stats.classifications["SOLVED_PROBLEM"] == 1
+    emit.assert_any_call("SOLVED_PROBLEM: 1")
+
+
 def test_item_error_does_not_stop_next_item(monkeypatch):
     monkeypatch.setattr(dry_run_sources, "fetch", Mock(return_value=[item("1"), item("2")]))
     monkeypatch.setattr(dry_run_sources, "fetch_context", Mock(return_value=""))

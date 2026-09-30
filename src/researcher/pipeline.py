@@ -62,6 +62,7 @@ def analysis_input(title: str, raw_text: str) -> str:
 def accepts_as_evidence(finding: Finding) -> bool:
     accepted = {
         Classification.PRODUCT_OPPORTUNITY,
+        Classification.SOLVED_PROBLEM,
         Classification.FEATURE_REQUEST,
         Classification.WORKFLOW_PAIN,
         Classification.SERVICE_GAP,

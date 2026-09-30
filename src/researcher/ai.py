@@ -12,6 +12,7 @@ from researcher.models import AiUsage
 
 class Classification(StrEnum):
     PRODUCT_OPPORTUNITY = "PRODUCT_OPPORTUNITY"
+    SOLVED_PROBLEM = "SOLVED_PROBLEM"
     FEATURE_REQUEST = "FEATURE_REQUEST"
     WORKFLOW_PAIN = "WORKFLOW_PAIN"
     SERVICE_GAP = "SERVICE_GAP"
@@ -132,7 +133,12 @@ def analyze(db: Session, text: str) -> Finding:
         "Comments may confirm frequency, workarounds, loss, willingness to pay, or related "
         "use cases, but a different problem mentioned only in a comment is not the original "
         "publication's problem. Use only evidence in the input. "
-        "PRODUCT_OPPORTUNITY is a problem that could become a standalone software product. "
+        "PRODUCT_OPPORTUNITY is a concrete product-solvable problem or unmet need, without "
+        "the publication describing an already implemented purpose-built solution to it. "
+        "SOLVED_PROBLEM is a concrete product-solvable problem for which the publication "
+        "describes an existing product, service, or tool that was specifically created or "
+        "is already being used to solve that problem. A workaround alone does not make a "
+        "problem SOLVED_PROBLEM. "
         "WORKFLOW_PAIN is a manual, fragmented, repetitive, or inconvenient workflow. "
         "SERVICE_GAP means the author cannot find a suitable service. FEATURE_REQUEST means "
         "a missing feature in an existing product. Set product_solvable=true for FEATURE_REQUEST "

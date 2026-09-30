@@ -34,6 +34,7 @@ def finding(
     classification: Classification,
     product_solvable: bool,
     contains_pain: bool = True,
+    confidence: float = 0.9,
 ) -> Finding:
     return Finding(
         contains_pain=contains_pain,
@@ -46,7 +47,7 @@ def finding(
         frequency=None,
         loss=None,
         willingness_to_pay=False,
-        confidence=0.9,
+        confidence=confidence,
     )
 
 
@@ -64,11 +65,15 @@ def test_candidate_filter_favors_recall():
 def test_evidence_acceptance_is_centralized():
     for classification in (
         Classification.PRODUCT_OPPORTUNITY,
+        Classification.SOLVED_PROBLEM,
         Classification.WORKFLOW_PAIN,
         Classification.SERVICE_GAP,
         Classification.FEATURE_REQUEST,
     ):
         assert accepts_as_evidence(finding(classification, product_solvable=True))
+    assert accepts_as_evidence(
+        finding(Classification.SOLVED_PROBLEM, product_solvable=True, confidence=0.65)
+    )
     assert not accepts_as_evidence(
         finding(Classification.FEATURE_REQUEST, product_solvable=False)
     )

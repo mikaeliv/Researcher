@@ -66,6 +66,11 @@ def test_same_problem_uses_structured_output_and_records_usage(monkeypatch):
         ai.Classification.FEATURE_REQUEST,
         False,
     ),
+    (
+        "I had this publishing problem, so I built and released Plume to solve it",
+        ai.Classification.SOLVED_PROBLEM,
+        True,
+    ),
 ])
 def test_analyze_parses_product_classification(
     monkeypatch, text, classification, product_solvable,
@@ -98,3 +103,6 @@ def test_analyze_parses_product_classification(
     output_format = post.call_args.args[1]["text"]["format"]
     assert output_format["type"] == "json_schema"
     assert output_format["strict"] is True
+    assert "SOLVED_PROBLEM" in output_format["schema"]["$defs"]["Classification"]["enum"]
+    instructions = post.call_args.args[1]["instructions"]
+    assert "A workaround alone does not make a problem SOLVED_PROBLEM" in instructions
