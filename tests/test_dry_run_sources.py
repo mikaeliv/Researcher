@@ -131,6 +131,37 @@ def test_limit_caps_items_before_context_and_analysis(monkeypatch):
     assert analysis.call_count == 2
 
 
+@pytest.mark.parametrize(
+    ("offset", "expected_ids"),
+    [
+        pytest.param(0, ["1", "2"], id="offset-zero"),
+        pytest.param(1, ["2", "3"], id="nonzero-offset"),
+        pytest.param(4, [], id="offset-beyond-fetched-items"),
+    ],
+)
+def test_offset_selects_items_before_analysis(monkeypatch, offset, expected_ids):
+    cheap_filter = Mock(return_value=True)
+    context = Mock(return_value="")
+    analysis = Mock(return_value=finding())
+    monkeypatch.setattr(
+        dry_run_sources,
+        "fetch",
+        Mock(return_value=[item("1"), item("2"), item("3")]),
+    )
+    monkeypatch.setattr(dry_run_sources, "likely_candidate", cheap_filter)
+    monkeypatch.setattr(dry_run_sources, "fetch_context", context)
+    monkeypatch.setattr(dry_run_sources, "analyze", analysis)
+
+    stats = dry_run_sources.run_source(
+        MagicMock(), source(), 2, emit=Mock(), offset=offset
+    )
+
+    assert cheap_filter.call_count == len(expected_ids)
+    assert [call.args[1] for call in context.call_args_list] == expected_ids
+    assert stats.fetched == len(expected_ids)
+    assert analysis.call_count == len(expected_ids)
+
+
 def test_main_selects_one_source(monkeypatch, capsys):
     selected = source()
     db = MagicMock()
@@ -145,7 +176,7 @@ def test_main_selects_one_source(monkeypatch, capsys):
     dry_run_sources.main(["--source", selected.name, "--limit", "4"])
 
     load.assert_called_once_with(db, selected.name)
-    run.assert_called_once_with(db, selected, 4)
+    run.assert_called_once_with(db, selected, 4, offset=0)
     assert "=== TOTAL ===" in capsys.readouterr().out
 
 

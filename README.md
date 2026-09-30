@@ -52,6 +52,15 @@ docker compose exec worker python scripts/dry_run_sources.py \
   --source "Hacker News / Ask HN" --limit 10
 ```
 
+При повторной проверке уже просмотренные публикации можно пропустить до фильтрации и LLM:
+
+```bash
+python scripts/dry_run_sources.py \
+  --source "Hacker News / Ask HN" \
+  --offset 10 \
+  --limit 20
+```
+
 Dry-run читает активные `Source` и данные бюджета `AiUsage`. Он не создаёт Publication,
 Evidence или Cluster, не меняет Source/cursor и не вызывает embeddings/clustering. Единственная
 разрешённая запись — штатная строка `AiUsage`, создаваемая production `analyze()`.

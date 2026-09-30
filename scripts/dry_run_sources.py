@@ -112,11 +112,12 @@ def run_source(
     source: Source,
     limit: int,
     emit: Callable[[str], None] = print,
+    offset: int = 0,
 ) -> Stats:
     stats = Stats(source.name)
     emit(f"\n=== {source.name} ===")
     try:
-        items = fetch(source)[:limit]
+        items = fetch(source)[offset:offset + limit]
         stats.fetched = len(items)
     except Exception as exc:  # noqa: BLE001 - one source must not stop the experiment
         stats.errors += 1
@@ -162,9 +163,17 @@ def _positive(value: str) -> int:
     return parsed
 
 
+def _nonnegative(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be at least 0")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", choices=V2_SOURCES)
+    parser.add_argument("--offset", type=_nonnegative, default=0)
     parser.add_argument("--limit", type=_positive, default=10)
     args = parser.parse_args(argv)
 
@@ -172,7 +181,7 @@ def main(argv: list[str] | None = None) -> None:
     with SessionLocal() as db:
         sources, missing = load_sources(db, args.source)
         for source in sources:
-            total.merge(run_source(db, source, args.limit))
+            total.merge(run_source(db, source, args.limit, offset=args.offset))
         for name in missing:
             stats = Stats(name, errors=1)
             print(f"\n=== {name} ===")
