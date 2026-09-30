@@ -20,12 +20,8 @@ def normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def useful(text: str) -> bool:
-    return len(text) >= 20 and len(text.split()) >= 4
-
-
-def obvious_content_request(text: str) -> bool:
-    return text.casefold().startswith(
+def obvious_content_request(title: str) -> bool:
+    return title.startswith(
         (
             "what is the difference between ",
             "what's the difference between ",
@@ -34,26 +30,38 @@ def obvious_content_request(text: str) -> bool:
             "why do people ",
             "what is the upshot of ",
             "why would i ever not ",
-            "will i be taxed if ",
         )
     )
 
-
-def likely_candidate(text: str) -> bool:
-    """Reject only obvious pre-LLM noise; ambiguous publications deliberately pass."""
-    if not useful(text):
-        return False
-    lowered = text.casefold()
-    obvious_noise = (
+def obvious_structural_noise(title: str) -> bool:
+    markers = (
         "who is hiring",
         "who wants to be hired",
         "freelancer? seeking freelancer",
         "weekly roundup",
         "monthly roundup",
-        "release notes",
-        "changelog",
     )
-    return not any(marker in lowered for marker in obvious_noise) and not obvious_content_request(text)
+    return any(marker in title for marker in markers)
+
+
+def useful(text: str) -> bool:
+    return len(text) >= 20 and len(text.split()) >= 4
+
+
+def likely_candidate(text: str) -> bool:
+    """Reject only deterministic pre-LLM noise; ambiguous publications pass."""
+    if not useful(text):
+        return False
+
+    title = text.splitlines()[0].strip().casefold()
+
+    if obvious_structural_noise(title):
+        return False
+
+    if obvious_content_request(title):
+        return False
+
+    return True
 
 
 def item_raw_text(item: Item) -> str:
