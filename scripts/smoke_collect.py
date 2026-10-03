@@ -1,4 +1,4 @@
-"""Fetch a bounded source sample without writing to the database or calling the LLM."""
+"""Проверить парсинг источника без записи в БД и вызова модели."""
 import argparse
 
 from sqlalchemy import select
@@ -9,6 +9,7 @@ from researcher.models import Source
 
 
 def main() -> None:
+    """Показать первые пять элементов и при запросе размер их контекста."""
     parser = argparse.ArgumentParser()
     parser.add_argument("source_name")
     parser.add_argument("--context", action="store_true")

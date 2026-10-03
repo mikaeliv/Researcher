@@ -1,3 +1,5 @@
+"""Сбор публикаций одной Lemmy community и её комментариев."""
+
 from datetime import UTC, datetime, timedelta
 
 from researcher.config import settings
@@ -11,6 +13,7 @@ def _base_url(source: Source) -> str:
 
 
 def fetch_lemmy(source: Source) -> list[Item]:
+    """Прочитать новые посты community с лимитом и фильтром по дате."""
     base_url = _base_url(source)
     community = source.config["community"]
     limit = source.config.get("limit", settings.source_item_limit)
@@ -45,6 +48,7 @@ def fetch_lemmy(source: Source) -> list[Item]:
 
 
 def fetch_lemmy_context(source: Source, external_id: str) -> str:
+    """Вернуть наиболее популярные комментарии к одному посту."""
     limit = source.config.get("max_comments", settings.max_comments_per_publication)
     with client() as http:
         response = http.get(

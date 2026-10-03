@@ -1,3 +1,5 @@
+"""Сбор комментариев к видео или к последним загрузкам YouTube-каналов."""
+
 from datetime import datetime
 
 from researcher.config import settings
@@ -9,6 +11,7 @@ YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
 
 
 def fetch_youtube(source: Source) -> list[Item]:
+    """Собрать уникальные верхнеуровневые комментарии в двух сортировках."""
     if not settings.youtube_api_key:
         raise ValueError("YouTube API key missing")
     videos = []
@@ -28,6 +31,8 @@ def fetch_youtube(source: Source) -> list[Item]:
                 channels = resp.json().get("items", [])
                 if not channels:
                     raise ValueError(f"YouTube channel not found: {handle}")
+                # channels.list возвращает uploads playlist в contentDetails;
+                # playlistItems.list затем даёт ID последних видео канала.
                 channel = channels[0]
                 resp = http.get(f"{YOUTUBE_API}/playlistItems", params={
                     "key": settings.youtube_api_key,
@@ -43,11 +48,15 @@ def fetch_youtube(source: Source) -> list[Item]:
         items = []
         seen = set()
         for video_id, title in videos:
+            # Оба порядка поддерживаются commentThreads.list. Пересечения
+            # удаляем по ID комментария, чтобы не удваивать свидетельства.
             for order in ("relevance", "time"):
                 resp = http.get(f"{YOUTUBE_API}/commentThreads", params={
                     "key": settings.youtube_api_key, "videoId": video_id, "part": "snippet",
                     "maxResults": comment_limit, "order": order, "textFormat": "plainText"})
                 if resp.status_code == 403 and "commentsDisabled" in resp.text:
+                    # Отключённые комментарии у одного видео не прерывают
+                    # сбор остальных видео того же источника.
                     continue
                 resp.raise_for_status()
                 for thread in resp.json().get("items", []):

@@ -1,4 +1,4 @@
-"""Repeat production analysis on five frozen source inputs."""
+"""Повторить production-анализ пяти зафиксированных входов для оценки стабильности."""
 
 import argparse
 import json
@@ -43,6 +43,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / ".var/analyze_stability_corpus.j
 
 
 def freeze() -> None:
+    """Сохранить точные входы модели из живых источников в локальный fixture."""
     records = []
     with SessionLocal() as db:
         items_by_source = {}
@@ -64,6 +65,8 @@ def freeze() -> None:
                     "in the normal fetch. A source-specific external-ID lookup helper is needed."
                 )
             item = matches[0]
+            # Заголовок защищает эксперимент от незаметной подмены материала
+            # при повторном использовании внешнего ID или изменении feed.
             if item.title != target["title"]:
                 raise RuntimeError(
                     f"Title mismatch for {source_name} / {item.external_id}: "
@@ -94,6 +97,7 @@ def freeze() -> None:
 
 
 def experiment(runs: int) -> None:
+    """Сравнить решения acceptance gate при повторных вызовах модели."""
     if not FIXTURE.exists():
         raise SystemExit(
             "Frozen fixture is missing. First run: python scripts/analyze_stability.py --freeze"
@@ -126,6 +130,8 @@ def experiment(runs: int) -> None:
                         "problem": finding.problem,
                     }
                 finally:
+                    # Эксперимент оплачивает вызовы, но откатывает AiUsage и
+                    # любые другие изменения в рабочей базе.
                     db.rollback()
             results.append(result)
             print(

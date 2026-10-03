@@ -1,3 +1,5 @@
+"""Сбор тем одной категории Discourse и ответов из topic API."""
+
 from datetime import UTC, datetime, timedelta
 
 from bs4 import BeautifulSoup
@@ -17,6 +19,7 @@ def _text(value: str | None) -> str:
 
 
 def fetch_discourse(source: Source) -> list[Item]:
+    """Получить список тем и оригинальный текст через /raw/{id}."""
     base_url = _base_url(source)
     category = source.config["category"].strip("/")
     limit = source.config.get("limit", settings.source_item_limit)
@@ -31,6 +34,8 @@ def fetch_discourse(source: Source) -> list[Item]:
             published_at = datetime.fromisoformat(topic["created_at"])
             if cutoff and published_at < cutoff:
                 continue
+            # Список категории содержит метаданные, но полный текст первой
+            # публикации берём отдельно, чтобы не спутать его с ответами.
             response = http.get(f"{base_url}/raw/{topic['id']}")
             response.raise_for_status()
             items.append(Item(
@@ -48,6 +53,7 @@ def fetch_discourse(source: Source) -> list[Item]:
 
 
 def fetch_discourse_context(source: Source, external_id: str) -> str:
+    """Вернуть ограниченное число ответов, пропустив первый пост автора."""
     limit = source.config.get("max_comments", settings.max_comments_per_publication)
     with client() as http:
         response = http.get(f"{_base_url(source)}/t/{external_id}.json")

@@ -1,7 +1,10 @@
+"""Настройки сервиса из переменных окружения и локального .env."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Единый набор параметров API, БД, источников и порогов публикации."""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str = "postgresql+psycopg://researcher:change-me@localhost:5432/researcher"
     redis_url: str = "redis://localhost:6379/0"
@@ -9,6 +12,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.6-luna"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_proxy_url: str = ""
+    # Размерность должна совпадать с Vector(1536) в модели и миграции.
     embedding_dimensions: int = 1536
     telegram_bot_token: str = ""
     telegram_proxy_url: str = ""

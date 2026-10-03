@@ -1,3 +1,5 @@
+"""Формирование карточек и отправка в Telegram Bot API."""
+
 from datetime import UTC, datetime
 from html import escape
 
@@ -10,9 +12,12 @@ from researcher.models import Cluster, Evidence, Publication, Source
 
 
 def card(db: Session, cluster: Cluster) -> str:
+    """Собрать HTML-карточку из последних пяти свидетельств кластера."""
     rows = db.execute(select(Evidence, Publication, Source).join(Publication, Evidence.publication_id == Publication.id)
                       .join(Source, Publication.source_id == Source.id)
                       .where(Evidence.cluster_id == cluster.id).order_by(Evidence.id.desc()).limit(5)).all()
+    # URL экранируется как атрибут, остальной текст — как HTML-содержимое.
+    # Telegram ограничивает длину сообщения, поэтому поля и итог усечены.
     sources = "\n".join(f'• <a href="{escape(p.url, quote=True)}">{escape(s.name)}</a>' for _, p, s in rows if p.url)
     workarounds = next((e.workaround for e, _, _ in rows if e.workaround), None)
     return (f"💡 <b>{escape(cluster.title[:150])}</b>\n\n"
@@ -24,6 +29,7 @@ def card(db: Session, cluster: Cluster) -> str:
 
 
 def publish(db: Session, cluster: Cluster) -> None:
+    """Отправить карточку и сохранить ID сообщения в текущей транзакции."""
     if not settings.telegram_bot_token or not settings.telegram_channel_id:
         raise RuntimeError("Telegram bot token and channel ID required")
     message = {"chat_id": settings.telegram_channel_id, "text": card(db, cluster),
@@ -38,6 +44,8 @@ def publish(db: Session, cluster: Cluster) -> None:
         data = resp.json()
     if not data.get("ok"):
         raise RuntimeError(str(data.get("description", "Telegram failure")))
+    # Отправка во внешний API и commit БД не атомарны: после успешной
+    # отправки, но до commit, повторная задача может продублировать карточку.
     cluster.telegram_message_id = data["result"]["message_id"]
     cluster.published_at = datetime.now(UTC)
     db.flush()

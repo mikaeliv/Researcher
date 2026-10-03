@@ -1,3 +1,5 @@
+"""ORM-модели: источники, публикации, извлечённые свидетельства и кластеры."""
+
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -26,6 +28,7 @@ class Base(DeclarativeBase):
 
 
 class Stage(StrEnum):
+    """Состояния обработки: filtered до AI, rejected после AI, failed после retries."""
     NEW = "new"
     FILTERED = "filtered"
     ANALYZED = "analyzed"
@@ -34,6 +37,7 @@ class Stage(StrEnum):
 
 
 class Source(Base):
+    """Настройки одного канала сбора и состояние последнего успешного опроса."""
     __tablename__ = "sources"
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(32))
@@ -46,6 +50,7 @@ class Source(Base):
 
 
 class Publication(Base):
+    """Сырой материал; внешний ID уникален только внутри своего источника."""
     __tablename__ = "publications"
     __table_args__ = (UniqueConstraint("source_id", "external_id"), Index("ix_publications_stage", "stage"))
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -64,6 +69,7 @@ class Publication(Base):
 
 
 class Cluster(Base):
+    """Общая проблема, объединяющая несколько подтверждённых свидетельств."""
     __tablename__ = "clusters"
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(Text)
@@ -78,6 +84,7 @@ class Cluster(Base):
 
 
 class Evidence(Base):
+    """Извлечённое свидетельство; одной публикации соответствует не более одного."""
     __tablename__ = "evidence"
     __table_args__ = (UniqueConstraint("publication_id"), Index("ix_evidence_cluster", "cluster_id"))
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -98,6 +105,7 @@ class Evidence(Base):
 
 
 class AiUsage(Base):
+    """Оценка стоимости вызова AI для контроля месячного бюджета."""
     __tablename__ = "ai_usage"
     id: Mapped[int] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -108,6 +116,7 @@ class AiUsage(Base):
 
 
 class Feedback(Base):
+    """Последняя оценка карточки одним пользователем Telegram."""
     __tablename__ = "feedback"
     __table_args__ = (UniqueConstraint("cluster_id", "user_id"),)
     id: Mapped[int] = mapped_column(primary_key=True)

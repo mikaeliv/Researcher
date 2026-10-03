@@ -1,4 +1,4 @@
-"""Evaluate Sources v2 with production filtering and analysis without collecting data."""
+"""Проверить Sources v2 через production-фильтр и анализ без сбора в БД."""
 import argparse
 from collections import Counter
 from collections.abc import Callable
@@ -33,6 +33,7 @@ V2_SOURCES = (
 
 @dataclass
 class Stats:
+    """Счётчики по одному источнику или по всему запуску проверки."""
     source: str
     fetched: int = 0
     filtered: int = 0
@@ -53,6 +54,7 @@ class Stats:
 
 
 def load_sources(db: Session, source_name: str | None = None) -> tuple[list[Source], list[str]]:
+    """Вернуть активные источники в фиксированном порядке проверки."""
     names = (source_name,) if source_name else V2_SOURCES
     rows = db.scalars(
         select(Source).where(Source.enabled.is_(True), Source.name.in_(names))
@@ -60,6 +62,7 @@ def load_sources(db: Session, source_name: str | None = None) -> tuple[list[Sour
     by_name = {source.name: source for source in rows}
     sources = [by_name[name] for name in names if name in by_name]
     for source in sources:
+        # После выхода из сессии fetch использует только загруженные поля.
         db.expunge(source)
     return sources, [name for name in names if name not in by_name]
 
@@ -96,6 +99,7 @@ def _print_summary(emit: Callable[[str], None], stats: Stats) -> None:
 
 
 def _commit_ai_usage_only(db: Session) -> None:
+    """Разрешить запись только штатного учёта токенов от analyze()."""
     new_objects = tuple(db.new)
     if (
         any(not isinstance(obj, AiUsage) for obj in new_objects)
@@ -114,9 +118,12 @@ def run_source(
     emit: Callable[[str], None] = print,
     offset: int = 0,
 ) -> Stats:
+    """Прогнать выборку источника без создания Publication и Evidence."""
     stats = Stats(source.name)
     emit(f"\n=== {source.name} ===")
     try:
+        # Смещение применяется до анализа: удобно продолжать выборку без
+        # повторной оплаты AI-вызовов для уже просмотренных элементов.
         items = fetch(source)[offset:offset + limit]
         stats.fetched = len(items)
     except Exception as exc:  # noqa: BLE001 - one source must not stop the experiment

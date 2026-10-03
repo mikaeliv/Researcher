@@ -14,10 +14,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Включить pgvector и создать таблицы текущих ORM-моделей."""
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     Base.metadata.create_all(op.get_bind())
 
 
 def downgrade() -> None:
+    """Удалить таблицы приложения, сохранив расширение pgvector."""
     Base.metadata.drop_all(op.get_bind())
-

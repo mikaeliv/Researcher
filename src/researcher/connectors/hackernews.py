@@ -1,3 +1,5 @@
+"""Сбор Ask HN и ограниченного дерева комментариев через Firebase API."""
+
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
@@ -12,10 +14,12 @@ API_URL = "https://hacker-news.firebaseio.com/v0"
 
 
 def _text(value: str | None) -> str:
+    """Преобразовать HTML-текст HN в читаемую строку."""
     return BeautifulSoup(value or "", "html.parser").get_text(" ", strip=True)
 
 
 def fetch_hackernews(source: Source) -> list[Item]:
+    """Загрузить свежие Ask HN stories в пределах лимита источника."""
     limit = source.config.get("limit", settings.source_item_limit)
     lookback = source.config.get("lookback_days", settings.source_lookback_days)
     cutoff = datetime.now(UTC) - timedelta(days=lookback) if lookback else None
@@ -44,6 +48,7 @@ def fetch_hackernews(source: Source) -> list[Item]:
 
 
 def fetch_hackernews_context(source: Source, external_id: str) -> str:
+    """Обойти ответы по уровням, ограничив число и глубину комментариев."""
     limit = source.config.get("max_comments", settings.max_comments_per_publication)
     max_depth = source.config.get("max_comment_depth", settings.max_comment_depth)
     comments = []
@@ -51,6 +56,8 @@ def fetch_hackernews_context(source: Source, external_id: str) -> str:
         response = http.get(f"{API_URL}/item/{external_id}.json")
         response.raise_for_status()
         story = response.json() or {}
+        # Очередь даёт сначала верхние комментарии, затем ответы; лимиты
+        # ограничивают число внешних запросов и размер входа модели.
         pending = deque((item_id, 0) for item_id in story.get("kids", []))
         while pending and len(comments) < limit:
             item_id, depth = pending.popleft()

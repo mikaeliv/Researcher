@@ -1,3 +1,5 @@
+"""Команды владельца Telegram-бота и сохранение обратной связи по карточкам."""
+
 import asyncio
 
 from aiogram import Bot, Dispatcher, F
@@ -15,11 +17,13 @@ dp = Dispatcher()
 
 
 def owner(user_id: int | None) -> bool:
+    """Разрешать управляющие действия только заданному Telegram ID."""
     return user_id is not None and settings.telegram_owner_id is not None and user_id == settings.telegram_owner_id
 
 
 @dp.message(Command("status", "stats"))
 async def status(message: Message) -> None:
+    """Показать общую статистику и распределение стадий по источникам."""
     if not owner(message.from_user.id if message.from_user else None):
         return
     with SessionLocal() as db:
@@ -34,6 +38,8 @@ async def status(message: Message) -> None:
             select(Publication.source_id, Publication.stage, func.count(Publication.id))
             .group_by(Publication.source_id, Publication.stage)
         ).all()
+    # Агрегируем в БД одним запросом; отсутствующие стадии ниже показываем
+    # как нули, чтобы статус каждого источника имел одинаковые поля.
     counts = {(source_id, stage): count for source_id, stage, count in stage_rows}
     details = []
     for source in source_rows:
@@ -61,6 +67,7 @@ async def status(message: Message) -> None:
 
 @dp.message(Command("sources"))
 async def sources(message: Message) -> None:
+    """Показать зарегистрированные источники и состояние сбора."""
     if not owner(message.from_user.id if message.from_user else None):
         return
     with SessionLocal() as db:
@@ -71,6 +78,7 @@ async def sources(message: Message) -> None:
 
 @dp.message(Command("pause", "resume"))
 async def toggle(message: Message) -> None:
+    """Включить или выключить сбор для всех источников сразу."""
     if not owner(message.from_user.id if message.from_user else None):
         return
     enabled = message.text.startswith("/resume")
@@ -83,6 +91,7 @@ async def toggle(message: Message) -> None:
 
 @dp.message(Command("collect", "publish", "digest"))
 async def run(message: Message) -> None:
+    """Поставить ручной запуск в очередь, не выполняя его внутри бота."""
     if not owner(message.from_user.id if message.from_user else None):
         return
     if message.text.startswith("/digest"):
@@ -95,6 +104,7 @@ async def run(message: Message) -> None:
 
 @dp.callback_query(F.data.startswith("vote:"))
 async def vote(callback: CallbackQuery) -> None:
+    """Сохранить последнюю оценку владельца для выбранного кластера."""
     if not owner(callback.from_user.id):
         await callback.answer("Только владелец может оценивать карточки", show_alert=True)
         return
@@ -116,6 +126,7 @@ async def vote(callback: CallbackQuery) -> None:
 
 
 async def main() -> None:
+    """Создать Telegram-сессию и запустить long polling."""
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN required")
     session = (

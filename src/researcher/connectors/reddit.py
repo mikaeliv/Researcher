@@ -1,3 +1,5 @@
+"""Сбор новых текстовых постов subreddit через OAuth Reddit API."""
+
 from datetime import UTC, datetime
 
 from researcher.config import settings
@@ -7,6 +9,7 @@ from .base import Item, client
 
 
 def fetch_reddit(source: Source) -> list[Item]:
+    """Получить app-only токен и вернуть посты с собственным текстом."""
     if not settings.reddit_client_id or not settings.reddit_client_secret:
         raise ValueError("Reddit API credentials missing")
     headers = {"User-Agent": settings.reddit_user_agent}
@@ -22,4 +25,3 @@ def fetch_reddit(source: Source) -> list[Item]:
                  p["data"]["title"], p["data"].get("selftext", ""),
                  datetime.fromtimestamp(p["data"]["created_utc"], UTC))
             for p in resp.json()["data"]["children"] if p["data"].get("selftext")]
-

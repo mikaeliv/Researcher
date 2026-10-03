@@ -1,4 +1,4 @@
-"""Load sources.json. Existing entries are updated or renamed."""
+"""Синхронизировать sources.json с БД, обновляя и переименовывая записи."""
 import json
 import sys
 from pathlib import Path
@@ -12,6 +12,7 @@ SOURCES_PATH = Path(__file__).resolve().parents[1] / "sources.json"
 
 
 def main() -> None:
+    """Создать или обновить источники одним commit после проверки типов."""
     with open(SOURCES_PATH, encoding="utf-8") as stream:
         sources = json.load(stream)
     allowed = {
@@ -21,6 +22,7 @@ def main() -> None:
     with SessionLocal() as db:
         names = {data["name"] for data in sources}
         if "--disable-unlisted" in sys.argv[1:]:
+            # Не удаляем старые источники: на них уже ссылаются публикации.
             for source in db.scalars(select(Source).where(Source.name.not_in(names))).all():
                 source.enabled = False
         for data in sources:

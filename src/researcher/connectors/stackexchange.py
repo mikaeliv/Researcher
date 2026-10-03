@@ -1,3 +1,5 @@
+"""Сбор вопросов Stack Exchange по сайту и необязательным тегам."""
+
 import time
 from datetime import UTC, datetime
 
@@ -11,9 +13,12 @@ STACK_EXCHANGE_URL = "https://api.stackexchange.com/2.3/questions"
 
 
 def fetch_stackexchange(source: Source) -> list[Item]:
+    """Загрузить вопросы с телом, учитывая cursor и API backoff."""
     tags = source.config.get("tags") or [source.config.get("tagged")]
     if isinstance(tags, str):
         tags = [tags]
+    # Убираем повторяющиеся теги: один вопрос может попасть сразу в
+    # несколько запросов и будет дополнительно дедуплицирован по ID.
     tags = list(dict.fromkeys(tag for tag in tags if tag)) or [None]
 
     questions = {}
@@ -24,6 +29,7 @@ def fetch_stackexchange(source: Source) -> list[Item]:
             if tag:
                 params["tagged"] = tag
             if source.cursor:
+                # Cursor хранит Unix timestamp следующего допустимого вопроса.
                 params["fromdate"] = int(source.cursor)
             response = http.get(STACK_EXCHANGE_URL, params=params)
             response.raise_for_status()
@@ -32,6 +38,7 @@ def fetch_stackexchange(source: Source) -> list[Item]:
                 raise ValueError(payload.get("error_message", "Stack Exchange error"))
             questions.update((q["question_id"], q) for q in payload["items"])
             if backoff := payload.get("backoff"):
+                # API требует паузу перед следующим запросом этого источника.
                 time.sleep(backoff)
 
     return [Item(str(q["question_id"]), q["link"],

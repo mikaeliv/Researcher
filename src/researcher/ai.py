@@ -1,3 +1,5 @@
+"""Запросы к AI API, валидация ответов и учёт оценочной стоимости вызовов."""
+
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -11,6 +13,7 @@ from researcher.models import AiUsage
 
 
 class Classification(StrEnum):
+    """Тип проблемы; решение о принятии свидетельства принимает pipeline."""
     PRODUCT_OPPORTUNITY = "PRODUCT_OPPORTUNITY"
     SOLVED_PROBLEM = "SOLVED_PROBLEM"
     FEATURE_REQUEST = "FEATURE_REQUEST"
@@ -23,6 +26,7 @@ class Classification(StrEnum):
 
 
 class Finding(BaseModel):
+    """Структурированный результат анализа одной публикации с её контекстом."""
     model_config = ConfigDict(extra="forbid")
     contains_pain: bool
     classification: Classification
@@ -38,11 +42,13 @@ class Finding(BaseModel):
 
 
 class ProblemMatch(BaseModel):
+    """Ответ на проверку, описывают ли два свидетельства одну проблему."""
     model_config = ConfigDict(extra="forbid")
     same_problem: bool
 
 
 def _post(endpoint: str, payload: dict) -> dict:
+    """Выполнить запрос к API, сохранив текст ошибки для диагностики."""
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required for analysis")
 
@@ -74,6 +80,7 @@ def _post(endpoint: str, payload: dict) -> dict:
 
 
 def budget_available(db: Session) -> bool:
+    """Проверить оценочные расходы с начала текущего месяца по UTC."""
     start = datetime.now(UTC).replace(
         day=1,
         hour=0,
@@ -91,6 +98,8 @@ def budget_available(db: Session) -> bool:
         ).where(AiUsage.created_at >= start)
     )
 
+    # Это проверка сохранённых расходов, а не резервирование денег: внешние
+    # параллельные запросы могут превысить лимит до записи очередного AiUsage.
     return float(spent or 0) < settings.monthly_ai_budget_usd
 
 
@@ -101,6 +110,7 @@ def record_usage(
     input_per_m: float,
     output_per_m: float = 0,
 ) -> None:
+    """Добавить строку расходов в текущую транзакцию без отдельного commit."""
     tokens_in = usage.get(
         "prompt_tokens",
         usage.get("input_tokens", 0),
@@ -125,6 +135,7 @@ def record_usage(
 
 
 def analyze(db: Session, text: str) -> Finding:
+    """Извлечь проблему автора и проверить, что цитата есть во входном тексте."""
     if not budget_available(db):
         raise RuntimeError("Monthly AI budget reached")
 
@@ -174,6 +185,8 @@ def analyze(db: Session, text: str) -> Finding:
 
     data = _post("responses", payload)
 
+    # Responses API может вернуть несколько output/content блоков; берём
+    # только текстовые части структурированного ответа.
     content = "".join(
         c.get("text", "")
         for output in data.get("output", [])
@@ -199,6 +212,8 @@ def analyze(db: Session, text: str) -> Finding:
         1.20,
     )
 
+    # Даже при строгой JSON-схеме модель может придумать цитату. Такое
+    # свидетельство нельзя передавать в кластеризацию.
     if result.contains_pain and (
         not result.quote
         or result.quote not in text
@@ -220,6 +235,7 @@ def same_problem(
     cluster_audience: str,
     cluster_description: str,
 ) -> bool:
+    """Проверить смысловое совпадение после поиска близких векторов."""
     if not budget_available(db):
         raise RuntimeError("Monthly AI budget reached")
 
@@ -263,6 +279,7 @@ def same_problem(
 
 
 def embed(db: Session, text: str) -> list[float]:
+    """Получить вектор заданной размерности и записать стоимость вызова."""
     if not budget_available(db):
         raise RuntimeError("Monthly AI budget reached")
 

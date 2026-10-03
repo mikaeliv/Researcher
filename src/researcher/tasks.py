@@ -1,3 +1,5 @@
+"""Периодические Celery-задачи для сбора, анализа и отправки карточек."""
+
 import logging
 from datetime import UTC, datetime
 
@@ -13,6 +15,8 @@ from researcher.telegram import publish
 
 log = logging.getLogger(__name__)
 celery_app = Celery("researcher", broker=settings.redis_url)
+# Расписание и подсчёт публикаций работают в UTC независимо от часового
+# пояса сервера. Позднее подтверждение задач допускает повторную доставку.
 celery_app.conf.update(task_serializer="json", accept_content=["json"], timezone="UTC",
                        task_acks_late=True, worker_prefetch_multiplier=1,
                        beat_schedule={
@@ -25,6 +29,7 @@ celery_app.conf.update(task_serializer="json", accept_content=["json"], timezone
 
 @celery_app.task
 def collect_all() -> None:
+    """Поставить отдельную задачу сбора для каждого включённого источника."""
     with SessionLocal() as db:
         ids = db.scalars(select(Source.id).where(Source.enabled.is_(True))).all()
     for source_id in ids:
@@ -33,11 +38,13 @@ def collect_all() -> None:
 
 @celery_app.task
 def collect_source(source_id: int) -> None:
+    """Собрать источник, сохранив ошибку в Source при неудаче."""
     with SessionLocal() as db:
         source = db.get(Source, source_id)
         if source is None or not source.enabled:
             return
-        # One fetch per source at a time even if scheduled twice.
+        # Транзакционная блокировка не даёт двум воркерам одновременно
+        # опрашивать один источник и продвигать его cursor.
         locked = db.scalar(select(func.pg_try_advisory_xact_lock(source_id + 1_000_000)))
         if not locked:
             return
@@ -55,6 +62,7 @@ def collect_source(source_id: int) -> None:
 
 @celery_app.task
 def process_pending() -> None:
+    """Передать ограниченную партию новых публикаций отдельным воркерам."""
     with SessionLocal() as db:
         ids = db.scalars(select(Publication.id).where(Publication.stage == Stage.NEW)
                          .order_by(Publication.id).limit(100)).all()
@@ -64,8 +72,10 @@ def process_pending() -> None:
 
 @celery_app.task
 def process_one(pub_id: int) -> None:
+    """Обработать публикацию с защитой от гонок и учётом повторных ошибок."""
     with SessionLocal() as db:
-        # Serialize AI analysis + cluster assignment to keep clusters and budget consistent.
+        # Общая транзакционная блокировка сериализует AI-вызовы и назначение
+        # кластеров, чтобы параллельные воркеры не создавали дубликаты.
         db.execute(
             select(func.pg_advisory_xact_lock(55_000_002))
         )
@@ -76,12 +86,16 @@ def process_one(pub_id: int) -> None:
             process(db, pub)
         except RuntimeError as exc:
             db.rollback()
+            # Нехватка бюджета или ключа — проблема конфигурации, а не
+            # конкретной публикации; оставляем её NEW для будущего запуска.
             if "budget reached" in str(exc) or "API_KEY" in str(exc):
                 log.warning("AI processing paused: %s", exc)
                 return
             raise
         except Exception as exc:
             db.rollback()
+            # После rollback нужен новый ORM-объект для фиксации счётчика
+            # попыток и последней ошибки в отдельной транзакции.
             pub = db.get(Publication, pub_id)
             pub.retry_count += 1
             pub.error = str(exc)[:1000]
@@ -93,10 +107,12 @@ def process_one(pub_id: int) -> None:
 
 @celery_app.task
 def publish_pending() -> None:
+    """Опубликовать лучшие подходящие кластеры в рамках дневного лимита."""
     if not settings.telegram_bot_token or not settings.telegram_channel_id:
         return
     with SessionLocal() as db:
-        # Post once per global time window. Keep the lock until commit after the HTTP call.
+        # Блокировка удерживается до commit после HTTP-вызова, чтобы два
+        # воркера не отправили одну карточку в одном временном окне.
         if not db.scalar(select(func.pg_try_advisory_xact_lock(55_000_001))):
             return
         today = datetime.now(UTC).date()
@@ -115,7 +131,8 @@ def publish_pending() -> None:
 
 @celery_app.task
 def weekly_digest(chat_id: int | str | None = None) -> None:
-    # A digest is generated from published clusters; all links remain in their original posts.
+    """Отправить краткий список лучших опубликованных кластеров за неделю."""
+    # Ссылки на свидетельства остаются в исходных карточках канала.
     target_chat_id = chat_id or settings.telegram_channel_id
     if not settings.telegram_bot_token or not target_chat_id:
         return

@@ -1,3 +1,5 @@
+"""Сбор элементов произвольного RSS/Atom feed в общий формат Item."""
+
 import calendar
 from datetime import UTC, datetime
 
@@ -10,6 +12,7 @@ from .base import Item, client
 
 
 def fetch_rss(source: Source) -> list[Item]:
+    """Прочитать feed, сохранив дату и текст из content либо summary."""
     with client() as http:
         response = http.get(source.config["url"])
         response.raise_for_status()

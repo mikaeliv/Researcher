@@ -1,3 +1,5 @@
+"""Экспериментальный сбор отзывов из публичного App Store RSS feed."""
+
 from datetime import datetime
 
 from researcher.models import Source
@@ -6,7 +8,7 @@ from .base import Item, client
 
 
 def fetch_appstore(source: Source) -> list[Item]:
-    """Public Apple customer review feed; availability and paging vary by country/app."""
+    """Прочитать отзывы; доступность и пагинация зависят от страны и приложения."""
     country = source.config.get("country", "us")
     app_id = source.config["app_id"]
     with client() as http:
@@ -14,6 +16,8 @@ def fetch_appstore(source: Source) -> list[Item]:
         resp.raise_for_status()
         data = resp.json()
     entries = data.get("feed", {}).get("entry", [])
+    # В feed бывают записи самого приложения; признак рейтинга оставляет
+    # только пользовательские отзывы.
     return [Item(str(e["id"]["label"]), e.get("link", {}).get("attributes", {}).get("href", ""),
                  e.get("title", {}).get("label", ""), e.get("content", {}).get("label", ""),
                  datetime.fromisoformat(e["updated"]["label"]))

@@ -1,3 +1,5 @@
+"""Общий формат собранного материала и выбор коннектора по типу Source."""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -8,6 +10,7 @@ from researcher.models import Source
 
 @dataclass(frozen=True)
 class Item:
+    """Публикация до записи в БД; external_id уникален в пределах Source."""
     external_id: str
     url: str
     title: str
@@ -17,10 +20,14 @@ class Item:
 
 
 def client() -> httpx.Client:
+    """Создать HTTP-клиент с едиными timeout, редиректами и User-Agent."""
     return httpx.Client(timeout=25, follow_redirects=True, headers={"User-Agent": "researcher/0.1"})
 
 
 def fetch(source: Source) -> list[Item]:
+    """Вызвать сборщик для заданного типа источника."""
+    # Импорты внутри веток не загружают необязательные зависимости каждого
+    # источника при работе с другими площадками.
     if source.kind == "hackernews":
         from .hackernews import fetch_hackernews
         return fetch_hackernews(source)
@@ -49,6 +56,9 @@ def fetch(source: Source) -> list[Item]:
 
 
 def fetch_context(source: Source, external_id: str) -> str:
+    """Загрузить ответы к публикации, если площадка это поддерживает."""
+    # Контекст вызывается после предварительного фильтра и не создаёт
+    # отдельные Publication: исходная проблема остаётся проблемой автора.
     if source.kind == "hackernews":
         from .hackernews import fetch_hackernews_context
         return fetch_hackernews_context(source, external_id)

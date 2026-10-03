@@ -1,4 +1,4 @@
-"""Simulate clustering in memory without changing production clustering data."""
+"""Смоделировать кластеризацию в памяти без изменения рабочих кластеров."""
 
 import sys
 from collections import Counter
@@ -15,6 +15,7 @@ from researcher.models import Evidence, Publication
 
 @dataclass(frozen=True)
 class EvidenceItem:
+    """Снимок свидетельства с вектором и ID исходного источника."""
     id: int
     problem: str
     audience: str
@@ -30,11 +31,13 @@ class VirtualMember:
 
 @dataclass
 class VirtualCluster:
+    """Временный кластер; первое свидетельство остаётся его представителем."""
     representative: EvidenceItem
     members: list[VirtualMember] = field(default_factory=list)
 
 
 def cosine_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    """Посчитать косинусное расстояние или inf для нулевого вектора."""
     denominator = sqrt(sum(value * value for value in left)) * sqrt(
         sum(value * value for value in right)
     )
@@ -44,6 +47,7 @@ def cosine_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:
 
 
 def load_evidence() -> list[EvidenceItem]:
+    """Загрузить существующие embeddings, не меняя рабочие таблицы."""
     with SessionLocal() as db:
         rows = db.execute(
             select(
@@ -64,6 +68,7 @@ def load_evidence() -> list[EvidenceItem]:
 
 
 def simulate(evidence_items: list[EvidenceItem]) -> tuple[list[VirtualCluster], Counter]:
+    """Повторить порог и AI-проверку production-кластеризации в памяти."""
     clusters: list[VirtualCluster] = []
     stats = Counter()
     with SessionLocal() as ai_db:
@@ -92,11 +97,11 @@ def simulate(evidence_items: list[EvidenceItem]) -> tuple[list[VirtualCluster], 
                         cluster.representative.audience,
                         cluster.representative.problem,
                     )
-                    ai_db.commit()  # Persists only AiUsage added by same_problem().
+                    ai_db.commit()  # Фиксируется только AiUsage от same_problem().
                 except Exception as exc:  # noqa: BLE001 - mirror production fail-closed behavior
                     stats["errors"] += 1
                     try:
-                        ai_db.commit()  # Preserve usage if the response failed validation.
+                        ai_db.commit()  # Сохраняем расход даже при неверном ответе.
                     except Exception:  # noqa: BLE001 - rollback any failed accounting transaction
                         ai_db.rollback()
                     print(
@@ -117,10 +122,12 @@ def simulate(evidence_items: list[EvidenceItem]) -> tuple[list[VirtualCluster], 
 
 
 def distinct_sources(cluster: VirtualCluster) -> int:
+    """Посчитать число разных Source, представленных в кластере."""
     return len({member.evidence.source_id for member in cluster.members})
 
 
 def print_report(clusters: list[VirtualCluster], stats: Counter) -> None:
+    """Показать слияния и кластеры, прошедшие пороги свидетельств."""
     merged = [cluster for cluster in clusters if len(cluster.members) >= 2]
     eligible = [
         (number, cluster)
