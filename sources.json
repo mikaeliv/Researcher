@@ -58,5 +58,23 @@
     "name": "Stack Exchange / Home Improvement",
     "enabled": false,
     "config": {"site": "diy"}
+  },
+  {
+    "kind": "discourse",
+    "name": "TrueNAS Community",
+    "enabled": false,
+    "config": {
+      "feed_url": "https://forums.truenas.com/c/apps-virt/6.rss",
+      "limit": 30
+    }
+  },
+  {
+    "kind": "discourse",
+    "name": "Nextcloud Community",
+    "enabled": false,
+    "config": {
+      "feed_url": "https://help.nextcloud.com/c/support/7.rss",
+      "limit": 30
+    }
   }
 ]

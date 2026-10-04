@@ -29,6 +29,7 @@ V2_SOURCES = (
     "Stack Exchange / Personal Finance",
     "Stack Exchange / Home Improvement",
 )
+TRIAL_SOURCES = ("TrueNAS Community", "Nextcloud Community")
 
 
 @dataclass
@@ -54,11 +55,12 @@ class Stats:
 
 
 def load_sources(db: Session, source_name: str | None = None) -> tuple[list[Source], list[str]]:
-    """Вернуть активные источники в фиксированном порядке проверки."""
+    """Вернуть активный набор либо явно выбранный источник, включая выключенный."""
     names = (source_name,) if source_name else V2_SOURCES
-    rows = db.scalars(
-        select(Source).where(Source.enabled.is_(True), Source.name.in_(names))
-    ).all()
+    query = select(Source).where(Source.name.in_(names))
+    if source_name is None:
+        query = query.where(Source.enabled.is_(True))
+    rows = db.scalars(query).all()
     by_name = {source.name: source for source in rows}
     sources = [by_name[name] for name in names if name in by_name]
     for source in sources:
@@ -179,7 +181,7 @@ def _nonnegative(value: str) -> int:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=V2_SOURCES)
+    parser.add_argument("--source", choices=V2_SOURCES + TRIAL_SOURCES)
     parser.add_argument("--offset", type=_nonnegative, default=0)
     parser.add_argument("--limit", type=_positive, default=10)
     args = parser.parse_args(argv)
@@ -192,7 +194,7 @@ def main(argv: list[str] | None = None) -> None:
         for name in missing:
             stats = Stats(name, errors=1)
             print(f"\n=== {name} ===")
-            print("ERROR: active Source not found in database")
+            print("ERROR: Source not found in database")
             _print_summary(print, stats)
             total.merge(stats)
 

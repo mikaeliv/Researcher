@@ -208,6 +208,18 @@ def test_loaded_sources_are_detached_before_dry_run():
     db.expunge.assert_called_once_with(selected)
 
 
+def test_explicit_source_can_be_disabled_for_dry_run():
+    selected = Source(kind="discourse", name="TrueNAS Community", enabled=False, config={})
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [selected]
+
+    sources, missing = dry_run_sources.load_sources(db, selected.name)
+
+    assert sources == [selected]
+    assert missing == []
+    assert "enabled" not in str(db.scalars.call_args.args[0].whereclause)
+
+
 def test_only_ai_usage_is_added_to_session(monkeypatch):
     db = MagicMock()
     monkeypatch.setattr(dry_run_sources, "fetch", Mock(return_value=[item("1")]))

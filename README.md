@@ -32,7 +32,7 @@ docker compose exec worker celery -A researcher.tasks:celery_app call researcher
 ## Sources v2
 
 - Hacker News использует официальный Ask HN feed и загружает ограниченный набор top-level и nested comments только после первичного фильтра.
-- Discourse настраивается через `base_url` и `category`. Home Assistant Feature Requests используется как исторический архив, а не как постоянный свежий feed.
+- Discourse читает RSS через `feed_url` и `limit`; прежний режим `base_url` + `category` сохранён для Home Assistant Feature Requests. TrueNAS Community и Nextcloud Community добавлены выключенными до ручной оценки.
 - Каждый Lemmy community является отдельным Source и настраивается через `base_url` и `community`.
 - Stack Exchange Personal Finance (`money`) и Home Improvement (`diy`) используют существующий generic collector. Ключ Stack Apps для публичных вопросов не нужен.
 
@@ -64,6 +64,7 @@ python scripts/dry_run_sources.py \
 Dry-run читает активные `Source` и данные бюджета `AiUsage`. Он не создаёт Publication,
 Evidence или Cluster, не меняет Source/cursor и не вызывает embeddings/clustering. Единственная
 разрешённая запись — штатная строка `AiUsage`, создаваемая production `analyze()`.
+Явный `--source` также позволяет проверить выключенный Source после синхронизации `sources.json`.
 
 ## Как работает обработка
 

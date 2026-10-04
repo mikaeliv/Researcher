@@ -1,7 +1,11 @@
-"""Сбор тем одной категории Discourse и ответов из topic API."""
+"""Сбор тем Discourse из RSS или category API и ответов из topic API."""
 
+import calendar
+import re
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
+import feedparser
 from bs4 import BeautifulSoup
 
 from researcher.config import settings
@@ -11,15 +15,54 @@ from .base import Item, client
 
 
 def _base_url(source: Source) -> str:
-    return source.config["base_url"].rstrip("/")
+    if base_url := source.config.get("base_url"):
+        return base_url.rstrip("/")
+    feed_url = urlsplit(source.config["feed_url"])
+    return f"{feed_url.scheme}://{feed_url.netloc}"
 
 
 def _text(value: str | None) -> str:
     return BeautifulSoup(value or "", "html.parser").get_text(" ", strip=True)
 
 
+def _topic_id(value: str) -> str | None:
+    match = re.search(r"/t/(?:[^/]+/)?(\d+)(?:/|$)", urlsplit(value).path)
+    return match.group(1) if match else None
+
+
+def _fetch_feed(source: Source) -> list[Item]:
+    with client() as http:
+        response = http.get(source.config["feed_url"])
+        response.raise_for_status()
+    feed = feedparser.parse(response.content)
+    if feed.bozo and not feed.entries:
+        raise ValueError(f"Invalid feed: {source.name}")
+    items = []
+    seen = set()
+    limit = source.config.get("limit", settings.source_item_limit)
+    if limit <= 0:
+        return items
+    for entry in feed.entries:
+        guid = entry.get("id", "")
+        url = entry.get("link") or (guid if urlsplit(guid).scheme in {"http", "https"} else "")
+        title = _text(entry.get("title"))
+        external_id = _topic_id(url) or _topic_id(guid) or guid or url
+        if not (external_id and url and title) or external_id in seen:
+            continue
+        date = entry.get("published_parsed")
+        published_at = datetime.fromtimestamp(calendar.timegm(date), UTC) if date else None
+        body = (entry.get("content") or [{}])[0].get("value") or entry.get("summary", "")
+        items.append(Item(external_id, url, title, _text(body), published_at))
+        seen.add(external_id)
+        if len(items) >= limit:
+            break
+    return items
+
+
 def fetch_discourse(source: Source) -> list[Item]:
-    """Получить список тем и оригинальный текст через /raw/{id}."""
+    """Получить темы из настроенного RSS или прежнего category API."""
+    if "feed_url" in source.config:
+        return _fetch_feed(source)
     base_url = _base_url(source)
     category = source.config["category"].strip("/")
     limit = source.config.get("limit", settings.source_item_limit)
@@ -54,6 +97,8 @@ def fetch_discourse(source: Source) -> list[Item]:
 
 def fetch_discourse_context(source: Source, external_id: str) -> str:
     """Вернуть ограниченное число ответов, пропустив первый пост автора."""
+    if not external_id.isdigit():
+        return ""
     limit = source.config.get("max_comments", settings.max_comments_per_publication)
     with client() as http:
         response = http.get(f"{_base_url(source)}/t/{external_id}.json")
