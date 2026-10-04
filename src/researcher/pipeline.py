@@ -64,10 +64,7 @@ def likely_candidate(text: str) -> bool:
     if obvious_structural_noise(title):
         return False
 
-    if obvious_content_request(title):
-        return False
-
-    return True
+    return not obvious_content_request(title)
 
 
 def item_raw_text(item: Item) -> str:
