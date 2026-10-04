@@ -45,7 +45,7 @@ services:
   beat:
     build: .
     env_file: .env
-    command: ["celery", "-A", "researcher.tasks:celery_app", "beat", "--loglevel=INFO"]
+    command: ["celery", "-A", "researcher.tasks:celery_app", "beat", "--loglevel=INFO", "--schedule=/app/.var/celerybeat-schedule"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_started}
