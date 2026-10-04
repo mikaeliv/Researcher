@@ -25,6 +25,8 @@ def normalize(value: str) -> str:
 
 def obvious_content_request(title: str) -> bool:
     """Отсеять заголовки с очевидным запросом объяснения, а не проблемы."""
+    title = title.strip().casefold()
+
     return title.startswith(
         (
             "what is the difference between ",
@@ -34,18 +36,23 @@ def obvious_content_request(title: str) -> bool:
             "why do people ",
             "what is the upshot of ",
             "why would i ever not ",
+            "will i be taxed if ",
         )
     )
 
 def obvious_structural_noise(title: str) -> bool:
     """Распознать регулярные рубрики, которые не являются свидетельствами."""
+    title = title.strip().casefold()
+
     markers = (
         "who is hiring",
         "who wants to be hired",
         "freelancer? seeking freelancer",
         "weekly roundup",
         "monthly roundup",
+        "release notes",
     )
+
     return any(marker in title for marker in markers)
 
 
