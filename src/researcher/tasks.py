@@ -22,8 +22,6 @@ celery_app.conf.update(task_serializer="json", accept_content=["json"], timezone
                        beat_schedule={
                            "collect": {"task": "researcher.tasks.collect_all", "schedule": crontab(minute=0, hour="*/3")},
                            "process": {"task": "researcher.tasks.process_pending", "schedule": crontab(minute="*/10")},
-                           "publish": {"task": "researcher.tasks.publish_pending", "schedule": crontab(minute=30, hour="9,13,18")},
-                           "digest": {"task": "researcher.tasks.weekly_digest", "schedule": crontab(minute=0, hour=10, day_of_week="mon")},
                        })
 
 
