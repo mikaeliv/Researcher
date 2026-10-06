@@ -80,7 +80,7 @@
   {
     "kind": "rss",
     "name": "Proxmox Support Forum",
-    "enabled": false,
+    "enabled": true,
     "config": {
       "url": "https://forum.proxmox.com/forums/proxmox-ve-installation-and-configuration.16/index.rss",
       "limit": 30
