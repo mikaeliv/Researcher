@@ -29,7 +29,7 @@ V2_SOURCES = (
     "Stack Exchange / Personal Finance",
     "Stack Exchange / Home Improvement",
 )
-TRIAL_SOURCES = ("TrueNAS Community", "Nextcloud Community")
+TRIAL_SOURCES = ("TrueNAS Community", "Nextcloud Community", "Proxmox Support Forum")
 
 
 @dataclass

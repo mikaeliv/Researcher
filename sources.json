@@ -76,5 +76,14 @@
       "feed_url": "https://help.nextcloud.com/c/support/7.rss",
       "limit": 30
     }
+  },
+  {
+    "kind": "rss",
+    "name": "Proxmox Support Forum",
+    "enabled": false,
+    "config": {
+      "url": "https://forum.proxmox.com/forums/proxmox-ve-installation-and-configuration.16/index.rss",
+      "limit": 30
+    }
   }
 ]
