@@ -18,6 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from researcher.source_groups import source_group_default
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -42,6 +44,7 @@ class Source(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(180), unique=True)
+    source_group_key: Mapped[str] = mapped_column(String(180), default=source_group_default)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     cursor: Mapped[str | None] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -124,3 +127,54 @@ class Feedback(Base):
     user_id: Mapped[int] = mapped_column(Integer)
     rating: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Opportunity(Base):
+    """Общий product pain/JTBD; пока не участвует в production pipeline."""
+    __tablename__ = "opportunities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    underlying_pain: Mapped[str] = mapped_column(Text)
+    job_to_be_done: Mapped[str] = mapped_column(Text)
+    desired_outcome: Mapped[str] = mapped_column(Text)
+    audience: Mapped[str] = mapped_column(Text)
+    context: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text)
+    scope: Mapped[str] = mapped_column(Text)
+    exclusions: Mapped[str] = mapped_column(Text)
+    representative_cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow,
+    )
+    representative_cluster: Mapped[Cluster] = relationship()
+    clusters: Mapped[list["OpportunityCluster"]] = relationship(back_populates="opportunity")
+
+
+class OpportunityCluster(Base):
+    """Один strict Cluster может принадлежать максимум одной Opportunity."""
+    __tablename__ = "opportunity_clusters"
+    __table_args__ = (UniqueConstraint("cluster_id", name="uq_opportunity_clusters_cluster"),)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), primary_key=True)
+    cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"), primary_key=True)
+    confidence: Mapped[float] = mapped_column(Float)
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    opportunity: Mapped[Opportunity] = relationship(back_populates="clusters")
+    cluster: Mapped[Cluster] = relationship()
+
+
+class ClusterOpportunityProfile(Base):
+    """Абстракция конкретного Cluster для поиска Opportunity-кандидатов."""
+    __tablename__ = "cluster_opportunity_profiles"
+    cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"), primary_key=True)
+    underlying_pain: Mapped[str] = mapped_column(Text)
+    job_to_be_done: Mapped[str] = mapped_column(Text)
+    desired_outcome: Mapped[str] = mapped_column(Text)
+    audience: Mapped[str] = mapped_column(Text)
+    context: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    model_name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    cluster: Mapped[Cluster] = relationship()

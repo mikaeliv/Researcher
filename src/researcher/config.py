@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     max_comment_depth: int = 2
     cluster_candidate_top_k: int = 3
     cluster_candidate_threshold: float = 0.35
+    opportunity_candidate_threshold: float = 0.40
+    opportunity_candidate_top_k: int = 5
+    opportunity_match_confidence: float = 0.70
     min_cluster_evidence: int = 2
     min_cluster_sources: int = 2
     max_daily_posts: int = 5

@@ -2,12 +2,14 @@
   {
     "kind": "hackernews",
     "name": "Hacker News / Ask HN",
+    "source_group_key": "hackernews",
     "enabled": true,
     "config": {"limit": 50}
   },
   {
     "kind": "discourse",
     "name": "Home Assistant / Feature Requests",
+    "source_group_key": "homeassistant",
     "enabled": false,
     "config": {
       "base_url": "https://community.home-assistant.io",
@@ -20,6 +22,7 @@
   {
     "kind": "lemmy",
     "name": "Lemmy / Productivity",
+    "source_group_key": "lemmy",
     "enabled": true,
     "config": {
       "base_url": "https://lemmy.world",
@@ -30,6 +33,7 @@
   {
     "kind": "lemmy",
     "name": "Lemmy / Selfhosted",
+    "source_group_key": "lemmy",
     "enabled": true,
     "config": {
       "base_url": "https://lemmy.world",
@@ -40,6 +44,7 @@
   {
     "kind": "lemmy",
     "name": "Lemmy / Apps",
+    "source_group_key": "lemmy",
     "enabled": true,
     "config": {
       "base_url": "https://lemmy.world",
@@ -50,18 +55,21 @@
   {
     "kind": "stackexchange",
     "name": "Stack Exchange / Personal Finance",
+    "source_group_key": "stackexchange",
     "enabled": true,
     "config": {"site": "money"}
   },
   {
     "kind": "stackexchange",
     "name": "Stack Exchange / Home Improvement",
+    "source_group_key": "stackexchange",
     "enabled": false,
     "config": {"site": "diy"}
   },
   {
     "kind": "discourse",
     "name": "TrueNAS Community",
+    "source_group_key": "truenas",
     "enabled": true,
     "config": {
       "feed_url": "https://forums.truenas.com/c/apps-virt/6.rss",
@@ -71,6 +79,7 @@
   {
     "kind": "discourse",
     "name": "Nextcloud Community",
+    "source_group_key": "nextcloud",
     "enabled": true,
     "config": {
       "feed_url": "https://help.nextcloud.com/c/support/7.rss",
@@ -80,6 +89,7 @@
   {
     "kind": "rss",
     "name": "Proxmox Support Forum",
+    "source_group_key": "proxmox",
     "enabled": true,
     "config": {
       "url": "https://forum.proxmox.com/forums/proxmox-ve-installation-and-configuration.16/index.rss",

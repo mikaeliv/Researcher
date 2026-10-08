@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from researcher.db import SessionLocal
 from researcher.models import Source
+from researcher.source_groups import source_group_key
 
 SOURCES_PATH = Path(__file__).resolve().parents[1] / "sources.json"
 
@@ -40,6 +41,11 @@ def main() -> None:
             else:
                 source.kind, source.name, source.config = data["kind"], data["name"], data["config"]
                 source.enabled = data.get("enabled", True)
+            source.source_group_key = data.get("source_group_key") or source_group_key(
+                data["kind"], data["name"], data["config"],
+            )
+            if not isinstance(source.source_group_key, str) or not source.source_group_key.strip():
+                raise ValueError("source_group_key must be nonempty text")
         db.commit()
 
 

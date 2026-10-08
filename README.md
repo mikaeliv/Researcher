@@ -98,3 +98,154 @@ pytest -q
 ```
 
 CI выполняет линтер, тесты и сборку Docker. Deploy запускается вручную из GitHub Actions после подготовки VPS и секретов; порядок действий — в `OPERATIONS.md`.
+
+## Opportunity: controlled dry-run
+
+Второй уровень работает отдельно от production pipeline: strict `Cluster` сохраняет конкретную
+проблему, а виртуальная Opportunity объединяет разные проблемы по общим pain, JTBD и outcome.
+Production `same_problem()`, пороги 0.35 / top_k=3, eligibility и Telegram publishing не меняются.
+Новые таблицы пока не используются задачами Celery или публикацией.
+
+Модели: `Opportunity`, `OpportunityCluster` (unique `cluster_id`: максимум одна Opportunity),
+`ClusterOpportunityProfile` (один профиль на Cluster). Профиль включает pain, job, outcome,
+audience и context, а Opportunity дополнительно хранит scope, exclusions, description и
+representative. Embeddings имеют ту же размерность 1536 и используют существующий provider/model.
+
+Миграция `0002_opportunities.py` добавляет эти таблицы и `sources.source_group_key`, заполняя ключ
+для существующих источников. Upgrade не изменяет Cluster/Evidence; downgrade удаляет только новые
+таблицы и поле. В `0001` закреплена прежняя схема Source и прежний набор таблиц, чтобы свежая
+установка не создавала новые таблицы дважды. Применение миграции — отдельное действие, не dry-run:
+
+```bash
+.venv/bin/alembic upgrade head
+# Обратная миграция при необходимости: .venv/bin/alembic downgrade 0001
+```
+
+Для Docker используется существующий сервис `migrate` (`docker compose run --rm migrate`).
+
+`source_group_key` задан для всех десяти текущих источников в `sources.json` и поддерживается seed:
+все Lemmy categories → `lemmy`, все Stack Exchange sites → `stackexchange`, Ask HN → `hackernews`,
+Home Assistant → `homeassistant`, TrueNAS → `truenas`, Nextcloud → `nextcloud`, Proxmox → `proxmox`.
+Для старых Reddit/YouTube/App Store используется platform kind; неизвестные RSS/Discourse с URL
+группируются по hostname. Без URL используется общий kind, чтобы не завышать diversity.
+Dry-run читает цепочку Cluster → Evidence → Publication → Source и считает множество ключей
+по всему membership — эквивалент `COUNT(DISTINCT source_group_key)`, а не число Source.id.
+
+После отдельного применения миграции запустите из корня проекта:
+
+```bash
+OPPORTUNITY_CANDIDATE_THRESHOLD=0.40 \
+OPPORTUNITY_CANDIDATE_TOP_K=5 \
+OPPORTUNITY_MATCH_CONFIDENCE=0.70 \
+.venv/bin/python scripts/dry_run_opportunity_clustering.py \
+  --limit 50 --max-ai-usd 2 --cache .var/opportunity_profiles
+```
+
+В Docker с обновлённым образом:
+
+```bash
+docker compose exec \
+  -e OPPORTUNITY_CANDIDATE_THRESHOLD=0.40 \
+  -e OPPORTUNITY_CANDIDATE_TOP_K=5 \
+  -e OPPORTUNITY_MATCH_CONFIDENCE=0.70 \
+  worker python scripts/dry_run_opportunity_clustering.py --limit 50 --max-ai-usd 2
+```
+
+Без `--limit` читаются все существующие Clusters, включая уже опубликованные; порядок — по ID.
+`--no-cache` отключает локальный кэш. JSON-кэш хранит только Cluster profiles/embeddings и
+инвалидируется при изменении problem/description/audience, моделей, размерности или CACHE_VERSION.
+При изменении инструкций profile generation нужно увеличить CACHE_VERSION. Opportunity semantics,
+matches и final summary проверяются заново в каждом запуске.
+
+Скрипт абстрагирует `Cluster.title`/description/audience через `build_cluster_opportunity_profile()`.
+В embedding input попадают только нормализованные pain, job, outcome, audience и context с
+фиксированными метками. Сырые Publication/Evidence и старый Cluster embedding не используются.
+
+Candidate distance < 0.40 и top_k=5 дают только дешёвый retrieval. `same_opportunity()` использует
+отдельный structured output; принятие требует `same_opportunity=True`, confidence >= 0.70 и
+`too_broad_if_merged=False`. Общая технология, аудитория или категория недостаточны.
+После каждого принятого attach `build_opportunity()` обновляет общую семантику и embedding без
+генерации title. Следующий Cluster сравнивается с этой общей Opportunity, а не с последним членом.
+Connected components не используются.
+
+`validate_opportunity()` проверяет соответствие каждого concrete Cluster точному pain/job/outcome.
+Outliers исключаются и остаются отдельными виртуальными singleton; профиль пересобирается и
+проверяется повторно. Неизвестные outlier IDs, low confidence, слишком broad группа и ошибки
+проверки не разрешают attach. Финальная проверка предшествует выбору ближайшего к centroid
+ClusterOpportunityProfile representative и единственной генерации title/description. Final summary
+не может менять уже проверенную семантику; такой ответ отмечается как ошибка.
+
+Обе DB-сессии запускают PostgreSQL `SET TRANSACTION READ ONLY` с `autoflush=False`; в конце
+выполняется rollback. Не сохраняются Opportunity, membership, профили или даже `AiUsage`.
+Скрипт не импортирует publishing/Telegram. Единственная запись — локальный JSON-кэш.
+`--max-ai-usd` ограничивает оценочные расходы текущего запуска, также учитывая оставшийся
+сохранённый месячный бюджет. Последний API-вызов может превысить лимит; ставки унаследованы из
+`ai.py`. Незаписанные расходы других dry-run не входят в месячный бюджет. API-вызовы оплачиваются
+реально, поэтому выводится локальная оценка стоимости.
+
+Отчёт содержит все счётчики кандидатов/решений/ошибок, размеры групп, source diversity, подробные
+multi-cluster Opportunities и top 20 ближайших отклонённых кандидатов с причиной/confidence/broad
+flag. `same_opportunity true/false` отражает bool модели до confidence/broad/validation veto.
+Расстояние и confidence каждого члена относятся к проверке при его присоединении; для seed
+singleton они отсутствуют. Ошибки профилей явно отмечают пропущенные Clusters. Ошибка финальной
+валидации разбивает группу на singletons; ошибка summary оставляет проверенную группу с
+`[summary unavailable]`. При наличии ошибок результат следует считать частичным.
+
+Пример формата на условных трёх Clusters (это не результат запуска на production данных):
+
+```text
+Clusters processed: 3
+Cluster opportunity profiles: 3
+Embedding candidate pairs: 2
+same_opportunity calls: 2
+same_opportunity true: 1
+same_opportunity false: 1
+same_opportunity errors: 0
+Virtual opportunities: 2
+Opportunities with >=2 clusters: 1
+Singletons: 1
+Opportunities with >=2 distinct source groups: 1
+Opportunities with >=3 distinct source groups: 0
+Largest opportunity: 2
+
+=== Opportunity 1 ===
+Title:
+Operate workloads consistently across small virtualization hosts
+Underlying pain:
+Host differences require manual coordination of workload operations.
+JTBD:
+Move and deploy workloads across hosts without reconciling each host manually.
+Desired outcome:
+Treat several hosts as one manageable environment.
+Audience:
+Operators of small self-hosted virtualization environments.
+Scope:
+Multi-host workload migration and deployment.
+Exclusions:
+Network configuration and unrelated self-hosting jobs.
+Clusters: 2
+Evidence: 4
+Distinct source groups: 2
+Source groups:
+- lemmy
+- proxmox
+
+[Cluster 1]
+problem: VM migration between hosts is difficult
+[Cluster 2]
+problem: LXC deployment across several hosts is manual
+
+=== CLOSEST REJECTED CANDIDATES ===
+embedding distance: 0.2100
+Cluster A: 3
+problem: Proxmox network configuration is difficult
+Cluster B / Opportunity clusters: [1, 2]
+same_opportunity confidence: 0.93
+reason: Shared technology, but a different job and desired outcome.
+too_broad_if_merged: False
+```
+
+Unit tests используют mocked AI, не оценивают качество живой LLM: positive pain/JTBD, same technology
+с разными jobs, broad veto, разные outcomes, confidence threshold, semantic chaining, outliers,
+centroid representative, source grouping, кэш, ошибки и отсутствие DB-записей. Схема/constraint
+проверяются на SQLite, upgrade/downgrade — через PostgreSQL SQL generation.

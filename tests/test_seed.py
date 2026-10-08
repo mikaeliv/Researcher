@@ -30,4 +30,5 @@ def test_seed_can_disable_unlisted_sources(monkeypatch):
     created = db.add.call_args.args[0]
     assert created.name == "Hacker News / Ask HN"
     assert created.enabled is True
+    assert created.source_group_key == "hackernews"
     db.commit.assert_called_once()
