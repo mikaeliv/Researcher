@@ -200,7 +200,7 @@ def test_real_ai_accounting_is_never_flushed_or_persisted(monkeypatch, budget):
     monkeypatch.setattr(ai, "_post", post_mock)
     clusters = [dry_run.ClusterItem(i, f"Problem {i}", "operators", "context", 1,
                                     frozenset({"lemmy"})) for i in (1, 2)]
-    groups, stats, _ = dry_run.simulate(clusters, max_ai_usd=budget)
+    groups, stats, _, _ = dry_run.simulate(clusters, max_ai_usd=budget)
     if budget == 2.0:
         assert len(groups) == 1 and len(groups[0].members) == 2
         assert stats["estimated_ai_micro_usd"] > 0

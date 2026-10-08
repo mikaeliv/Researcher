@@ -85,11 +85,42 @@ class RejectedCandidate:
     opportunity_pain: str
 
 
-def load_clusters(limit: int | None = None) -> list[ClusterItem]:
+@dataclass
+class CandidateDiagnostic:
+    cluster: ClusterItem
+    opportunity_cluster_ids: tuple[int, ...]
+    opportunity_pain: str
+    opportunity_source_groups: frozenset[str]
+    distance: float
+    match: OpportunityMatch | None = None
+    error: str | None = None
+
+
+def parse_source_groups(value: str) -> set[str]:
+    groups = {key.strip() for key in value.split(",")}
+    if "" in groups:
+        raise argparse.ArgumentTypeError("--source-groups requires nonempty comma-separated keys")
+    return groups
+
+
+def load_clusters(limit: int | None = None,
+                  requested_source_groups: set[str] | None = None) -> list[ClusterItem]:
     with SessionLocal(autoflush=False) as db:
         db.execute(text("SET TRANSACTION READ ONLY"))
         try:
             query = select(Cluster).order_by(Cluster.id)
+            if requested_source_groups is not None:
+                known_groups = set(db.scalars(select(Source.source_group_key).distinct()).all())
+                unknown = requested_source_groups - known_groups
+                if unknown:
+                    raise ValueError("Unknown source_group_key: " + ", ".join(sorted(unknown)))
+                query = (
+                    query.join(Evidence, Evidence.cluster_id == Cluster.id)
+                    .join(Publication, Publication.id == Evidence.publication_id)
+                    .join(Source, Source.id == Publication.source_id)
+                    .where(Source.source_group_key.in_(requested_source_groups))
+                    .distinct()
+                )
             if limit is not None:
                 query = query.limit(limit)
             clusters = db.scalars(query).all()
@@ -215,6 +246,7 @@ def fit_opportunity(db, members: list[Member], stats: Counter, call,
 def simulate(clusters: list[ClusterItem], cache: Path | None = None, max_ai_usd: float = 2.0):
     opportunities: list[VirtualOpportunity] = []
     rejected: list[RejectedCandidate] = []
+    cross_source_candidates: list[CandidateDiagnostic] = []
     stats = Counter(processed=len(clusters))
     with SessionLocal(autoflush=False) as db:
         # AiUsage stays pending in memory. READ ONLY also blocks accidental flush/commit writes.
@@ -247,13 +279,30 @@ def simulate(clusters: list[ClusterItem], cache: Path | None = None, max_ai_usd:
                 candidates = [(distance, opportunity) for distance, opportunity in candidates
                               if distance < settings.opportunity_candidate_threshold]
                 stats["pairs"] += len(candidates)
-                attached = False
+                candidate_records = []
                 for distance, opportunity in candidates:
-                    ids = tuple(member.item.cluster.id for member in opportunity.members)
+                    groups = frozenset(source_groups(opportunity))
+                    diagnostic = CandidateDiagnostic(
+                        cluster, tuple(member.item.cluster.id for member in opportunity.members),
+                        opportunity.profile.underlying_pain, groups, distance,
+                    )
+                    # Symmetric difference means either side contributes an independent group.
+                    if cluster.source_groups ^ groups:
+                        stats["cross_source_pairs"] += 1
+                        cross_source_candidates.append(diagnostic)
+                    else:
+                        stats["same_source_pairs"] += 1
+                    candidate_records.append((opportunity, diagnostic))
+                attached = False
+                for opportunity, diagnostic in candidate_records:
+                    distance = diagnostic.distance
+                    ids = diagnostic.opportunity_cluster_ids
                     stats["calls"] += 1
                     try:
                         match = call(same_opportunity, db, item.profile, opportunity.profile)
+                        diagnostic.match = match
                     except Exception as exc:
+                        diagnostic.error = str(exc)
                         stats["errors"] += 1
                         rejected.append(RejectedCandidate(cluster.id, ids, distance, None,
                                                           str(exc), None, cluster.title,
@@ -326,18 +375,20 @@ def simulate(clusters: list[ClusterItem], cache: Path | None = None, max_ai_usd:
             stats["estimated_ai_micro_usd"] = round(
                 sum(row.estimated_usd for row in db.new if isinstance(row, AiUsage)) * 1_000_000,
             )
-            return final, stats, rejected
+            return final, stats, rejected, cross_source_candidates
         finally:
             db.rollback()
 
 
-def print_report(opportunities, stats, rejected) -> None:
+def print_report(opportunities, stats, rejected, cross_source_candidates) -> None:
     merged = [opportunity for opportunity in opportunities if len(opportunity.members) >= 2]
     for label, value in (
         ("Clusters processed", stats["processed"]),
         ("Cluster opportunity profiles", stats["profiles"]),
         ("Profile errors (skipped clusters)", stats["profile_errors"]),
         ("Embedding candidate pairs", stats["pairs"]),
+        ("Same-source candidate pairs", stats["same_source_pairs"]),
+        ("Cross-source candidate pairs", stats["cross_source_pairs"]),
         ("same_opportunity calls", stats["calls"]),
         ("same_opportunity true", stats["true"]),
         ("same_opportunity false", stats["false"]),
@@ -396,10 +447,29 @@ def print_report(opportunities, stats, rejected) -> None:
         print(f"reason: {candidate.reason}")
         print(f"too_broad_if_merged: {candidate.too_broad}")
 
+    print("\n=== CLOSEST CROSS-SOURCE CANDIDATES ===")
+    for candidate in sorted(cross_source_candidates, key=lambda candidate: candidate.distance)[:20]:
+        print(f"\nembedding distance: {candidate.distance:.4f}")
+        print(f"Cluster A id: {candidate.cluster.id}")
+        print(f"Cluster A problem: {candidate.cluster.title}")
+        print(f"Cluster A source groups: {', '.join(sorted(candidate.cluster.source_groups))}")
+        print(f"Cluster B id / Opportunity clusters: {list(candidate.opportunity_cluster_ids)}")
+        print(f"Opportunity underlying pain: {candidate.opportunity_pain}")
+        print(f"Cluster B source groups: {', '.join(sorted(candidate.opportunity_source_groups))}")
+        match = candidate.match
+        result = match.same_opportunity if match else ("ERROR" if candidate.error else "NOT EVALUATED")
+        print(f"same_opportunity result: {result}")
+        print(f"confidence: {match.confidence if match else None}")
+        reason = match.reason if match else candidate.error or "Earlier candidate accepted or failed"
+        print(f"reason: {reason}")
+        print(f"too_broad_if_merged: {match.too_broad_if_merged if match else None}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, help="first N existing clusters by ID")
+    parser.add_argument("--limit", type=int, help="first N selected clusters by ID")
+    parser.add_argument("--source-groups", type=parse_source_groups, metavar="KEYS",
+                        help="comma-separated source_group_key values; match any cluster evidence")
     parser.add_argument("--cache", type=Path, default=Path(".var/opportunity_profiles"))
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--max-ai-usd", type=float, default=2.0,
@@ -415,13 +485,20 @@ def main() -> None:
         parser.error("Invalid Opportunity candidate/match settings")
     logging.basicConfig(level=logging.INFO)
     print("READ-ONLY DRY RUN: no DB writes or Telegram publishing.")
+    print("Source group filter: " + (", ".join(sorted(args.source_groups))
+                                     if args.source_groups is not None else "ALL"))
     print(f"Candidate threshold={settings.opportunity_candidate_threshold}, "
           f"top_k={settings.opportunity_candidate_top_k}, "
           f"match confidence={settings.opportunity_match_confidence}")
-    opportunities, stats, rejected = simulate(
-        load_clusters(args.limit), None if args.no_cache else args.cache, args.max_ai_usd,
+    try:
+        clusters = load_clusters(args.limit, args.source_groups)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(f"Clusters selected: {len(clusters)}")
+    opportunities, stats, rejected, cross_source_candidates = simulate(
+        clusters, None if args.no_cache else args.cache, args.max_ai_usd,
     )
-    print_report(opportunities, stats, rejected)
+    print_report(opportunities, stats, rejected, cross_source_candidates)
 
 
 if __name__ == "__main__":

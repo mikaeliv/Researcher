@@ -151,7 +151,22 @@ docker compose exec \
   worker python scripts/dry_run_opportunity_clustering.py --limit 50 --max-ai-usd 2
 ```
 
-Без `--limit` читаются все существующие Clusters, включая уже опубликованные; порядок — по ID.
+`--source-groups lemmy,truenas,nextcloud,proxmox` выбирает уникальные Clusters, у которых хотя бы
+один Evidence связан с указанной `source_group_key`. Пробелы удаляются, повторяющиеся ключи
+объединяются; пустые и неизвестные ключи вызывают CLI-ошибку до AI processing. Сортировка по ID и
+`--limit` применяются после фильтра. Для выбранного Cluster сохраняются все Evidence/source groups.
+Без фильтра прежнее поведение сохраняется; без `--limit` читаются все подходящие Clusters, включая
+уже опубликованные. Перед AI выводятся `Source group filter: ...` и `Clusters selected: N`.
+
+Следующий controlled run для self-hosted vertical:
+
+```bash
+python scripts/dry_run_opportunity_clustering.py \
+  --source-groups lemmy,truenas,nextcloud,proxmox \
+  --max-ai-usd 2 \
+  --cache .var/opportunity_profiles
+```
+
 `--no-cache` отключает локальный кэш. JSON-кэш хранит только Cluster profiles/embeddings и
 инвалидируется при изменении problem/description/audience, моделей, размерности или CACHE_VERSION.
 При изменении инструкций profile generation нужно увеличить CACHE_VERSION. Opportunity semantics,
@@ -185,7 +200,13 @@ ClusterOpportunityProfile representative и единственной генер�
 
 Отчёт содержит все счётчики кандидатов/решений/ошибок, размеры групп, source diversity, подробные
 multi-cluster Opportunities и top 20 ближайших отклонённых кандидатов с причиной/confidence/broad
-flag. `same_opportunity true/false` отражает bool модели до confidence/broad/validation veto.
+flag. `Same-source candidate pairs` и `Cross-source candidate pairs` делят все retrieved candidates
+после threshold/top_k: cross-source означает непустую симметрическую разность source-group sets
+нового Cluster и всей candidate Opportunity. Пересекающиеся, но разные множества тоже cross-source.
+Блок `CLOSEST CROSS-SOURCE CANDIDATES` показывает top 20 по расстоянию, включая accepted pairs,
+с группами обеих сторон и результатом LLM. При раннем attach оставшиеся retrieved candidates
+помечаются `NOT EVALUATED`; ошибки LLM — `ERROR`. Диагностика хранит снимок Opportunity до attach.
+`same_opportunity true/false` отражает bool модели до confidence/broad/validation veto.
 Расстояние и confidence каждого члена относятся к проверке при его присоединении; для seed
 singleton они отсутствуют. Ошибки профилей явно отмечают пропущенные Clusters. Ошибка финальной
 валидации разбивает группу на singletons; ошибка summary оставляет проверенную группу с
